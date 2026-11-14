@@ -48,14 +48,13 @@
 .block:first-child {
   margin-top: 0;
 }
-.block:focus:before {
+/* Paint the element's existing box without changing text layout or pagination. */
+.block:focus {
+  background-color: var(--script-active-background);
+  border-radius: var(--script-active-radius);
+}
+.block:focus:empty::after {
   content: "";
-  position: absolute;
-  left: -18px;
-  top: 2px;
-  width: 2px;
-  height: 12px;
-  background: #819471;
 }
 .block:empty:after {
   content: attr(data-placeholder);
@@ -134,7 +133,9 @@
   .page:last-child {
     break-after: auto;
   }
-  .block:before,
+  .block:focus {
+    background-color: transparent;
+  }
   .block:empty:after {
     display: none !important;
   }

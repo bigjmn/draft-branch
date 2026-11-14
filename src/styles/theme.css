@@ -19,6 +19,8 @@
   --script-margin-bottom: 1in;
   --script-margin-left: 1.5in;
   --script-margin-right: 1in;
+  --script-active-background: #e7e7e7;
+  --script-active-radius: 4px;
   --script-font-size: 12pt;
   --script-line-height: 12pt;
   --script-character-indent: 2.3in;
