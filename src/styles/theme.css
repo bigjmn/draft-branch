@@ -1,0 +1,29 @@
+/* Edit shared colors, fonts, and page dimensions here. */
+@theme {
+  --color-ink: #292d29;
+  --color-paper: #fffefb;
+  --color-workspace: #f1f2ed;
+  --color-accent: #51634b;
+  --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-screenplay: Courier, "Courier New", monospace;
+}
+:root {
+  --ink: var(--color-ink);
+  --muted: #8a8d84;
+  --line: #e5e7df;
+  --green: var(--color-accent);
+  --sidebar: 246px;
+  --script-page-width: 8.5in;
+  --script-page-height: 11in;
+  --script-margin-top: 1in;
+  --script-margin-bottom: 1in;
+  --script-margin-left: 1.5in;
+  --script-margin-right: 1in;
+  --script-font-size: 12pt;
+  --script-line-height: 12pt;
+  --script-character-indent: 2.3in;
+  --script-dialogue-indent: 1in;
+  --script-dialogue-width: 3.5in;
+  --script-parenthetical-indent: 1.5in;
+  --script-parenthetical-width: 2.5in;
+}
