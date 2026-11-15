@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseDraft } from "@/lib/editor/draft";
-import { createSampleDraft } from "@/lib/editor/sample";
+import { createBlankDraft, createSampleDraft } from "@/lib/editor/sample";
 import { STORAGE_KEY, type Draft } from "@/lib/editor/types";
 
 export type SaveStatus = "loading" | "saved" | "saving" | "error";
@@ -30,9 +30,18 @@ export function useDraft() {
 
   useEffect(() => {
     let initial = createSampleDraft();
+    // `/editor?new` opens a blank project. Drop the flag so a reload keeps the
+    // user's work. The blank draft replaces the stored one on the first edit.
+    const url = new URL(window.location.href);
+    const fresh = url.searchParams.has("new");
+    if (fresh) {
+      url.searchParams.delete("new");
+      window.history.replaceState(null, "", url);
+    }
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) initial = parseDraft(raw);
+      const raw = fresh ? null : localStorage.getItem(STORAGE_KEY);
+      if (fresh) initial = createBlankDraft();
+      else if (raw) initial = parseDraft(raw);
       setStatus("saved");
     } catch {
       setRecoveryError(

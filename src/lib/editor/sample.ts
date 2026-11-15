@@ -47,6 +47,14 @@ const sample: [ElementType, string][] = [
   ["action", "From somewhere inside, a kettle begins to whistle."],
 ];
 
+/** A new project: one empty scene heading, ready to type into. */
+export function createBlankDraft(): Draft {
+  return {
+    title: "Untitled screenplay",
+    blocks: [{ id: crypto.randomUUID(), type: "scene", text: "" }],
+  };
+}
+
 export function createSampleDraft(): Draft {
   return {
     title: "The Last Light",

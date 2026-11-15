@@ -1,0 +1,12 @@
+{
+  "auth": {
+    "providers": {
+      "anonymous": true,
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "DraftBranch",
+        "supportEmail": "bigjmn@gmail.com"
+      }
+    }
+  }
+}

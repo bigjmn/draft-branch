@@ -1,4 +1,8 @@
+"use client";
+import { signOut } from "firebase/auth";
+import { useAuth } from "@/components/auth/auth-provider";
 import type { Scene } from "@/lib/editor/types";
+import { firebaseAuth } from "@/lib/firebase/client";
 interface Props {
   title: string;
   scenes: Scene[];
@@ -15,6 +19,11 @@ export function Sidebar({
   onAdd,
   onHelp,
 }: Props) {
+  const { user } = useAuth();
+  const name =
+    user?.displayName ||
+    user?.email ||
+    (user?.isAnonymous ? "Guest" : "Your workspace");
   return (
     <aside id="sidebar">
       <a className="brand" href="#canvas">
@@ -55,9 +64,20 @@ export function Sidebar({
         ))}
       </nav>
       <div className="sidebar-bottom">
-        <span className="avatar">Y</span>
-        <div>
-          Your workspace<small>Saved on this device</small>
+        <span className="avatar">{name.charAt(0).toUpperCase()}</span>
+        <div className="account">
+          <span className="account-name" title={name}>
+            {name}
+          </span>
+          <small>
+            Saved on this device ·{" "}
+            <button
+              className="sign-out"
+              onClick={() => signOut(firebaseAuth())}
+            >
+              Sign out
+            </button>
+          </small>
         </div>
         <button
           onClick={onHelp}

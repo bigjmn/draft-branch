@@ -1,4 +1,5 @@
-import { ScreenplayEditor } from "@/components/editor/screenplay-editor";
+import { Landing } from "@/components/landing/landing";
+
 export default function Home() {
-  return <ScreenplayEditor />;
+  return <Landing />;
 }

@@ -1,6 +1,9 @@
 import {
   ELEMENT_LABELS,
   NEXT_ELEMENT,
+  cycleElement,
+  unwrapParenthetical,
+  wrapParenthetical,
   type EditorLayout,
   type ElementType,
   type ScriptBlock,
@@ -118,13 +121,9 @@ export class ScreenplayEngine {
       return;
     if (event.key === "Tab") {
       event.preventDefault();
-      const types = Object.keys(ELEMENT_LABELS) as ElementType[];
-      this.setType(
-        types[
-          (types.indexOf(this.type(block)) +
-            (event.shiftKey ? types.length - 1 : 1)) %
-            types.length
-        ],
+      this.retype(
+        block,
+        cycleElement(this.type(block), event.shiftKey ? -1 : 1),
       );
     } else if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -139,7 +138,12 @@ export class ScreenplayEngine {
       range.deleteContents();
       const trailing = range.cloneRange();
       trailing.setEnd(block, block.childNodes.length);
-      const tail = trailing.extractContents().textContent ?? "";
+      let tail = trailing.extractContents().textContent ?? "";
+      // The closing parenthesis belongs to the parenthetical, not the next line.
+      if (this.type(block) === "parenthetical" && tail.endsWith(")")) {
+        tail = tail.slice(0, -1);
+        block.append(")");
+      }
       const next = this.createBlock({
         id: crypto.randomUUID(),
         type: NEXT_ELEMENT[this.type(block)],
@@ -182,10 +186,49 @@ export class ScreenplayEngine {
   setType(type: ElementType) {
     const block = this.active?.isConnected ? this.active : this.blocks()[0];
     if (!block) return;
-    this.applyType(block, type);
-    this.callbacks.onSelection(block.dataset.id!, type);
     block.focus({ preventScroll: true });
+    this.retype(block, type);
+  }
+  /** Changes a block's type, adding or removing parenthetical brackets as needed. */
+  private retype(block: HTMLDivElement, type: ElementType) {
+    const from = this.type(block);
+    if (from === type) return;
+    const text = this.text(block);
+    const current = { text, offset: this.caretOffset(block) ?? text.length };
+    const next =
+      type === "parenthetical"
+        ? wrapParenthetical(current)
+        : from === "parenthetical"
+          ? unwrapParenthetical(current)
+          : current;
+    this.applyType(block, type);
+    if (next.text !== text) {
+      block.textContent = next.text;
+      this.setCaret(block, next.offset);
+    }
+    this.callbacks.onSelection(block.dataset.id!, type);
     this.changed();
+  }
+  private caretOffset(block: HTMLElement): number | null {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return null;
+    const range = selection.getRangeAt(0);
+    if (!block.contains(range.endContainer)) return null;
+    const before = document.createRange();
+    before.selectNodeContents(block);
+    before.setEnd(range.endContainer, range.endOffset);
+    return before.toString().length;
+  }
+  private setCaret(block: HTMLElement, offset: number) {
+    const range = document.createRange();
+    const node = block.firstChild;
+    if (node instanceof Text)
+      range.setStart(node, Math.min(offset, node.length));
+    else range.selectNodeContents(block);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
   }
   append(type: ElementType) {
     const block = this.createBlock({ id: crypto.randomUUID(), type, text: "" });
