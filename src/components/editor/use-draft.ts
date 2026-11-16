@@ -13,6 +13,7 @@ export function useDraft() {
   const current = useRef<Draft | null>(null);
   const dirty = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fresh = useRef<boolean | null>(null);
 
   const save = useCallback(() => {
     if (!current.current || !dirty.current) return true;
@@ -32,15 +33,17 @@ export function useDraft() {
     let initial = createSampleDraft();
     // `/editor?new` opens a blank project. Drop the flag so a reload keeps the
     // user's work. The blank draft replaces the stored one on the first edit.
+    // The answer is kept in a ref because Strict Mode runs this effect twice,
+    // and the second run would no longer see the flag.
     const url = new URL(window.location.href);
-    const fresh = url.searchParams.has("new");
-    if (fresh) {
+    fresh.current ??= url.searchParams.has("new");
+    if (url.searchParams.has("new")) {
       url.searchParams.delete("new");
-      window.history.replaceState(null, "", url);
+      window.history.replaceState(window.history.state, "", url);
     }
     try {
-      const raw = fresh ? null : localStorage.getItem(STORAGE_KEY);
-      if (fresh) initial = createBlankDraft();
+      const raw = fresh.current ? null : localStorage.getItem(STORAGE_KEY);
+      if (fresh.current) initial = createBlankDraft();
       else if (raw) initial = parseDraft(raw);
       setStatus("saved");
     } catch {

@@ -105,6 +105,13 @@ npm run dev -- --port 3001
 
 No secrets are required. Authentication uses the `draftbranch` Firebase project; its public web config is in `src/lib/firebase/client.ts`, and `.firebaserc` / `firebase.json` select the project and its enabled sign-in providers. Browser storage is still the only persistence layer for drafts.
 
+The project also has a Firestore database (`firestore.rules`), a Cloud Storage bucket (`storage.rules`) and Cloud Functions (`functions/`, its own npm package). The `createUserProfile` function writes a `users/{uid}` document when someone creates an email or Google account; anonymous guests get none. To deploy the rules and functions:
+
+```sh
+npm --prefix functions install
+npx firebase-tools deploy --only firestore,storage,functions
+```
+
 Firebase allows sign-in only from authorized domains (`localhost`, `draftbranch.firebaseapp.com`, and `draftbranch.web.app` by default). Add any other host, such as the Sites preview domain, under Authentication → Settings → Authorized domains in the Firebase console.
 
 ### Commands

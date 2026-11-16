@@ -6,3 +6,5 @@ out/
 !.env.example
 .DS_Store
 .sites-runtime/
+firebase-debug.log
+*-debug.log

@@ -35,7 +35,17 @@ Validation before finishing a change: `npm run typecheck && npm test && npm run 
 - Element types come from `ELEMENT_LABELS` in `src/lib/editor/types.ts`. Keyboard flow lives in the same file, in `NEXT_ELEMENT` (Enter) and `TAB_CYCLES` (Tab). When adding a type, update those, plus `toFountain` and the CSS for `[data-type=...]`. The README's "Using the editor" tables document the keyboard flow, so keep them in sync.
 - Export (`draft.ts`) writes Fountain using forced-element prefixes (`.`, `@`, `>`, `!`) or JSON. PDF output uses the browser print dialog.
 
-**Authentication:** the Firebase project is `draftbranch`, set up through `.firebaserc` and `firebase.json`. The client SDK is initialized lazily in `src/lib/firebase/client.ts`, so call `firebaseAuth()` only in effects or event handlers, never during render or prerender. `AuthProvider` in the root layout exposes `useAuth()`, which returns `{ user, loading }`. `/` is the landing page (`AuthPanel`), and `/editor` wraps the editor in `RequireAuth`. All auth runs in the browser, because the hosted Site is a static export, which can't use cookies, proxy or server actions. Map Firebase error codes to messages in `auth-errors.ts`. "Try the Editor" uses anonymous sign-in and navigates to `/editor?new`; `useDraft` treats `?new` as "start from `createBlankDraft()`" and strips it from the URL. Drafts aren't tied to accounts yet, and Git sync isn't implemented. The "Main draft" and "LOCAL" labels in the interface are display only.
+**Authentication:** the Firebase project is `draftbranch`, set up through `.firebaserc` and `firebase.json`. The client SDK is initialized lazily in `src/lib/firebase/client.ts`, so call `firebaseAuth()` only in effects or event handlers, never during render or prerender. `AuthProvider` in the root layout exposes `useAuth()`, which returns `{ user, loading }`. `/` is the landing page (`AuthPanel`), and `/editor` wraps the editor in `RequireAuth`. All auth runs in the browser, because the hosted Site is a static export, which can't use cookies, proxy or server actions. Map Firebase error codes to messages in `auth-errors.ts`. "Try the Editor" uses anonymous sign-in and navigates to `/editor?new`; `useDraft` treats `?new` as "start from `createBlankDraft()`" and strips it from the URL (the flag is held in a ref because Strict Mode runs the effect twice). The landing page sends returning account holders straight to `/editor`, but not anonymous guests.
+
+**Firebase backend (Blaze plan):**
+- **Firestore:** `(default)` database in `nam5`. Rules in `firestore.rules`: clients can read only `users/{their uid}` and write nothing.
+- **Storage:** default bucket `draftbranch.firebasestorage.app` in `us-central1`. Rules in `storage.rules`: each user owns `users/{uid}/**`, with a 20 MB limit per file.
+- **Functions:** live in `functions/`, a separate npm package (TypeScript, built to `lib/`, excluded from the root tsconfig).
+  - `createUserProfile` is a 1st-gen `auth.user().onCreate` trigger that creates `users/{uid}` (email, displayName, photoURL, providers, createdAt) for new email and Google accounts. Anonymous guests are skipped.
+  - It is 1st gen because the 2nd-gen `beforeUserCreated` needs Identity Platform. 1st-gen functions don't support Node 24, so the runtime is `nodejs22`.
+- **Deploying:** `npx firebase-tools deploy --only firestore,storage,functions`. The CLI isn't a project dependency.
+
+Drafts aren't tied to accounts yet, and Git sync isn't implemented. The "Main draft" and "LOCAL" labels in the interface are display only.
 
 ## Styling conventions
 

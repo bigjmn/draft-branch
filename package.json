@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "format": "prettier --write src tests *.json *.mjs *.ts README.md"
+    "format": "prettier --write src tests functions/src functions/*.json *.json *.mjs *.ts README.md"
   },
   "dependencies": {
     "firebase": "^13.3.0",

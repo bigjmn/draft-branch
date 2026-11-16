@@ -24,7 +24,7 @@ export function AuthPanel({
   mode?: AuthMode;
   onModeChange?: (mode: AuthMode) => void;
 }) {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const [ownMode, setOwnMode] = useState<Mode>("signup");
   const mode = controlledMode ?? ownMode;
   const [busy, setBusy] = useState(false);
@@ -58,7 +58,9 @@ export function AuthPanel({
     onModeChange?.(next);
     setError(null);
   };
-  const disabled = busy || loading || Boolean(user);
+  // Not disabled while the saved session loads: that can take a moment, and
+  // signing in again at that point is harmless. A guest may sign in to an account.
+  const disabled = busy || Boolean(user && !user.isAnonymous);
 
   return (
     <section className="auth-card" aria-labelledby="auth-title">

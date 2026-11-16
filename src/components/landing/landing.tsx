@@ -18,25 +18,31 @@ export function Landing() {
     source: TrySource;
     message: string;
   } | null>(null);
-  // Set before the guest sign-in starts, because the auth listener can report
-  // the new user before signInAnonymously resolves.
-  const wantsBlank = useRef(false);
+  // While "Try the Editor" is running it does its own navigation to the blank
+  // project, so the redirect below must not send the user to their saved draft.
+  const tryingRef = useRef(false);
 
-  // A returning session, or a successful sign-in, opens the editor.
-  // "Try the Editor" opens a new blank project instead of the saved draft.
+  // A returning account, or a successful sign-in from the panel, opens the
+  // editor. Guests stay on the landing page so they can come back to it.
   useEffect(() => {
-    if (user) router.replace(wantsBlank.current ? "/editor?new" : "/editor");
+    if (user && !user.isAnonymous && !tryingRef.current) {
+      router.replace("/editor");
+    }
   }, [user, router]);
 
   async function tryEditor(source: TrySource) {
-    if (trying) return;
-    wantsBlank.current = true;
+    if (tryingRef.current) return;
+    tryingRef.current = true;
     setTrying(true);
     setTryError(null);
     try {
-      await signInAnonymously(firebaseAuth());
+      // Wait for the saved session to load, and reuse it if there is one.
+      const auth = firebaseAuth();
+      await auth.authStateReady();
+      if (!auth.currentUser) await signInAnonymously(auth);
+      router.push("/editor?new");
     } catch (caught) {
-      wantsBlank.current = false;
+      tryingRef.current = false;
       setTrying(false);
       const message = authErrorMessage(caught);
       if (message) setTryError({ source, message });
