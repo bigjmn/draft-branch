@@ -1,0 +1,207 @@
+dialog.share-dialog {
+  margin: auto;
+  width: min(700px, calc(100vw - 32px));
+  max-height: 90vh;
+  padding: 28px;
+  overflow: auto;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.share-heading,
+.invitation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.share-heading h2 {
+  margin: 5px 0 0;
+  font-size: 26px;
+}
+.share-heading > button {
+  font-size: 28px;
+}
+.share-description,
+.share-link-note {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 16px 0;
+}
+.share-link-note {
+  padding: 12px 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.share-invite-form {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  gap: 12px;
+}
+.share-invite-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+.share-invite-form input,
+.share-dialog select {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 10px;
+  border-radius: 6px;
+  min-width: 0;
+}
+.share-invite-form > button {
+  grid-column: 1 / -1;
+}
+.share-dialog h3 {
+  margin-top: 25px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.share-list {
+  padding: 0;
+  margin: 10px 0;
+  list-style: none;
+}
+.share-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.share-list li > div {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.share-list small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+}
+.share-list button {
+  color: var(--danger);
+}
+.share-error {
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.share-dialog button:disabled,
+.invitation-page button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.invitation-page {
+  min-height: 100vh;
+  background: var(--color-workspace);
+  color: var(--ink);
+  padding: 28px 24px 60px;
+}
+.invitation-header {
+  max-width: 960px;
+  margin: 0 auto 32px;
+  font-size: 15px;
+}
+.invitation-card {
+  max-width: 720px;
+  margin: 0 auto 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 30px;
+  border-radius: 14px;
+}
+.invitation-card h1 {
+  font: 700 30px/1.2 var(--font-ui);
+  margin: 12px 0;
+}
+.invitation-card p {
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+.invitation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin-top: 20px;
+}
+.invitation-actions p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+}
+.invitation-actions > button:not(.primary-action) {
+  color: var(--green);
+  text-decoration: underline;
+}
+.invitation-auth {
+  --color-ink: #222227;
+  --ink: #222227;
+  --line: #e4e4e7;
+  --muted: #71717a;
+  --green: #0f766e;
+  width: min(420px, 100%);
+  margin: 24px auto;
+}
+.invitation-auth .auth-card {
+  background: #fdfdfd;
+  color: #222227;
+}
+.invitation-auth .auth-card h2 {
+  color: #222227;
+}
+.invitation-auth .auth-agreement {
+  color: #55555f;
+}
+.invitation-auth .auth-agreement a {
+  color: #0f766e;
+}
+.shared-screenplay {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 2px 2px 24px;
+}
+.shared-paper {
+  box-sizing: border-box;
+  width: 8.5in;
+  min-height: 11in;
+  margin: auto;
+  padding: 1in 1in 1in 1.5in;
+  background: white;
+  color: black;
+  box-shadow: 0 1px 4px #0002;
+}
+.shared-paper h1 {
+  font:
+    bold 16pt/1.4 Courier,
+    monospace;
+  margin: 0 0 36px;
+}
+.shared-blocks {
+  width: 6in;
+}
+@media (max-width: 540px) {
+  .share-dialog {
+    padding: 18px;
+  }
+  .share-invite-form {
+    grid-template-columns: 1fr;
+  }
+  .share-list li {
+    flex-wrap: wrap;
+  }
+  .invitation-page {
+    padding: 18px 12px;
+  }
+  .invitation-card {
+    padding: 20px;
+  }
+}

@@ -1,3 +1,4 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import {
   FieldValue,
   Timestamp,
@@ -39,6 +40,8 @@ export class ProjectService {
   constructor(
     readonly db: Firestore,
     readonly objects: ObjectStore,
+    readonly publicOrigin = process.env.PUBLIC_APP_URL ||
+      (process.env.FIRESTORE_EMULATOR_HOST ? "http://localhost:3010" : ""),
   ) {
     this.git = new GitService(objects);
   }
@@ -490,12 +493,28 @@ export class ProjectService {
     const role = data.role;
     if (role !== "editor" && role !== "reviewer")
       fail("invalid-argument", "Invite role must be editor or reviewer.");
-    const invitationId = requestKey(actor, data.requestId),
-      ref = this.project(pid).collection("invitations").doc(invitationId);
+    let origin: URL;
+    try {
+      origin = new URL(this.publicOrigin);
+    } catch {
+      return fail(
+        "failed-precondition",
+        "Email sharing is not configured yet.",
+      );
+    }
+    if (
+      origin.protocol !== "https:" &&
+      !(process.env.FIRESTORE_EMULATOR_HOST && origin.hostname === "localhost")
+    )
+      fail("failed-precondition", "Sharing requires an HTTPS application URL.");
+    const invitationId = requestKey(actor, data.requestId);
+    const ref = this.project(pid).collection("invitations").doc(invitationId);
     const fingerprint = hash(JSON.stringify({ email, role }));
+    const token = randomBytes(32).toString("hex");
+    const quotaRef = this.db.doc(`invitationLimits/${actor.uid}`);
     return this.db.runTransaction(async (tx) => {
-      await this.access(tx, pid, actor, ["owner"]);
-      const existing = await tx.get(ref);
+      const { project } = await this.access(tx, pid, actor, ["owner"]);
+      const [existing, quota] = await tx.getAll(ref, quotaRef);
       if (existing.exists) {
         assertRequest(existing.data(), fingerprint);
         return {
@@ -504,17 +523,122 @@ export class ProjectService {
           status: existing.data()!.status,
         };
       }
+      const freshWindow =
+        !quota.exists || quota.data()!.windowStart < Date.now() - 3600000;
+      const count = freshWindow ? 0 : quota.data()!.count;
+      if (count >= 50)
+        fail(
+          "resource-exhausted",
+          "Invitation limit reached. Try again later.",
+        );
+      tx.set(quotaRef, {
+        count: count + 1,
+        windowStart: freshWindow ? Date.now() : quota.data()!.windowStart,
+      });
+      const ownerName =
+        actor.name === "Writer"
+          ? actor.email?.split("@")[0] || "The project owner"
+          : actor.name;
       tx.create(ref, {
         email,
         role,
         invitedBy: actor.uid,
+        ownerName,
         status: "pending",
         fingerprint,
+        tokenHash: hash(token),
+        deliveryStatus: "queued",
         expiresAt: Timestamp.fromMillis(Date.now() + 7 * 86400000),
         createdAt: now(),
       });
+      const link = `${origin.origin}/invite?project=${pid}&invitation=${invitationId}#token=${token}`;
+      tx.create(
+        this.db.doc(`invitationMail/${hash(`${pid}:${invitationId}`)}`),
+        {
+          projectId: pid,
+          invitationId,
+          to: email,
+          ownerName,
+          title: project.title,
+          role,
+          link,
+          status: "queued",
+          attempts: 0,
+          createdAt: now(),
+        },
+      );
       return { invitationId, projectId: pid, status: "pending" };
     });
+  }
+
+  private assertToken(invitation: { tokenHash?: string }, value: unknown) {
+    if (
+      typeof value !== "string" ||
+      !/^[a-f0-9]{64}$/.test(value) ||
+      !invitation.tokenHash
+    )
+      fail("permission-denied", "Invitation link is invalid or unavailable.");
+    const actual = Buffer.from(hash(value), "hex"),
+      expected = Buffer.from(invitation.tokenHash, "hex");
+    if (expected.length !== actual.length || !timingSafeEqual(actual, expected))
+      fail("permission-denied", "Invitation link is invalid or unavailable.");
+  }
+
+  /** Capability access only: never returns a working draft, history, or arbitrary branch. */
+  async sharedInvitation(input: unknown, includeDraft = false) {
+    const data = record(input),
+      pid = id(data.projectId),
+      invitationId = id(data.invitationId);
+    const check = () =>
+      this.db.runTransaction(async (tx) => {
+        const [invite, project] = await tx.getAll(
+          this.project(pid).collection("invitations").doc(invitationId),
+          this.project(pid),
+        );
+        if (!invite.exists || !project.exists)
+          fail(
+            "permission-denied",
+            "Invitation link is invalid or unavailable.",
+          );
+        const invitation = invite.data()!;
+        this.assertToken(invitation, data.token);
+        if (
+          !["pending", "accepted"].includes(invitation.status) ||
+          invitation.expiresAt.toMillis() <= Date.now()
+        )
+          fail(
+            "permission-denied",
+            "This invitation has expired or been revoked.",
+          );
+        const owner = await tx.get(this.member(pid, invitation.invitedBy));
+        assertRole(owner.data()?.role, ["owner"]);
+        if (invitation.status === "accepted") {
+          const member = await tx.get(this.member(pid, invitation.acceptedBy));
+          if (!member.exists)
+            fail(
+              "permission-denied",
+              "This invitation is no longer available.",
+            );
+        }
+        return {
+          title: project.data()!.title as string,
+          ownerName: String(invitation.ownerName || "The project owner"),
+          role: invitation.role as Role,
+          expiresAt: invitation.expiresAt.toMillis() as number,
+        };
+      });
+    const metadata = await check();
+    if (!includeDraft) return metadata;
+    const main = await this.branch(pid, "main").get();
+    const revision = await this.project(pid)
+      .collection("commits")
+      .doc(main.data()!.head)
+      .get();
+    if (!revision.exists)
+      fail("not-found", "Published screenplay unavailable.");
+    const draft = await this.git.readSnapshot(pid, revision.data()!.blob);
+    await check();
+    return { ...metadata, draft, commitId: main.data()!.head as string };
   }
 
   async acceptInvitation(actor: Actor, input: unknown) {
@@ -536,6 +660,7 @@ export class ProjectService {
       if (!invite.exists || !project.exists)
         fail("not-found", "Invitation not found.");
       const invitation = invite.data()!;
+      if (invitation.tokenHash) this.assertToken(invitation, data.token);
       if (invitation.email !== actor.email!.toLowerCase())
         fail("permission-denied", "Invitation belongs to a different email.");
       if (
@@ -559,6 +684,8 @@ export class ProjectService {
       tx.set(this.member(pid, actor.uid), {
         uid: actor.uid,
         role,
+        email: actor.email,
+        displayName: actor.name,
         joinedAt: member.data()?.joinedAt ?? now(),
       });
       tx.set(this.db.doc(`users/${actor.uid}/projects/${pid}`), {
@@ -584,10 +711,36 @@ export class ProjectService {
       const { project } = await this.access(tx, pid, actor, ["owner"]);
       if (uid === project.ownerUid)
         fail("failed-precondition", "The project owner cannot be removed.");
+      const invitations = await tx.get(
+        this.project(pid)
+          .collection("invitations")
+          .where("acceptedBy", "==", uid),
+      );
+      for (const invite of invitations.docs)
+        tx.update(invite.ref, { status: "revoked", updatedAt: now() });
       tx.delete(this.member(pid, uid));
       tx.delete(this.db.doc(`users/${uid}/projects/${pid}`));
     });
     return { removed: true };
+  }
+
+  async updateMemberRole(actor: Actor, input: unknown) {
+    const data = record(input),
+      pid = id(data.projectId),
+      uid = id(data.uid);
+    if (data.role !== "editor" && data.role !== "reviewer")
+      fail("invalid-argument", "Choose Reader or Editor.");
+    await this.db.runTransaction(async (tx) => {
+      const { project } = await this.access(tx, pid, actor, ["owner"]);
+      const member = await tx.get(this.member(pid, uid));
+      if (!member.exists || uid === project.ownerUid)
+        fail("failed-precondition", "Cannot change this member.");
+      tx.update(this.member(pid, uid), { role: data.role });
+      tx.update(this.db.doc(`users/${uid}/projects/${pid}`), {
+        role: data.role,
+      });
+    });
+    return { updated: true };
   }
 
   async revokeInvitation(actor: Actor, input: unknown) {
@@ -599,7 +752,7 @@ export class ProjectService {
       await this.access(tx, pid, actor, ["owner"]);
       const invite = await tx.get(ref);
       if (!invite.exists) fail("not-found", "Invitation not found.");
-      if (invite.data()!.status === "pending")
+      if (["pending", "accepted"].includes(invite.data()!.status))
         tx.update(ref, { status: "revoked", updatedAt: now() });
     });
     return { revoked: true };
@@ -609,12 +762,12 @@ export class ProjectService {
     const data = record(input),
       pid = id(data.projectId),
       branch = branchId(data.branchId);
-    await this.checkAccess(pid, actor);
+    const { role } = await this.checkAccess(pid, actor);
     const branchDoc = await this.branch(pid, branch).get();
     if (!branchDoc.exists) fail("not-found", "Branch not found.");
     const working = await this.draft(pid, actor.uid, branch).get();
     const head = branchDoc.data()!.head as string;
-    if (working.exists) {
+    if (working.exists && role !== "reviewer") {
       const saved = working.data()!;
       const bytes = await this.objects.get(saved.snapshotPath);
       if (hash(bytes) !== saved.contentHash)

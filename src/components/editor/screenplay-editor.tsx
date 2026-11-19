@@ -1,4 +1,6 @@
 "use client";
+import { TypewriterLoader } from "@/components/ui/typewriter-loader";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   downloadDraft,
@@ -19,6 +21,7 @@ import { useDraft } from "./use-draft";
 import { useProjectDraft, type EditorProject } from "./use-project-draft";
 import { ThemeToggle } from "@/components/theme/theme-provider";
 import Link from "next/link";
+import { ShareProject } from "@/components/projects/share-project";
 import { VersionControl } from "./version-control";
 
 export function ScreenplayEditor({ project }: { project?: EditorProject }) {
@@ -117,12 +120,7 @@ function EditorView({
     // Let React close the dialog before opening the browser print sheet.
     requestAnimationFrame(() => window.print());
   };
-  if (!draft)
-    return (
-      <main className="loading-state" role="status">
-        Opening your writing room…
-      </main>
-    );
+  if (!draft) return <TypewriterLoader />;
 
   return (
     <div className={`editor-shell${focus ? " focus" : ""}`} data-zoom={zoom}>
@@ -144,6 +142,9 @@ function EditorView({
               <Link className="dashboard-back" href="/dashboard">
                 ← Projects
               </Link>
+            )}
+            {project?.role === "owner" && (
+              <ShareProject projectId={project.id} uid={project.uid} />
             )}
             <VersionControl
               project={project}

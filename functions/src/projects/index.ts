@@ -1,3 +1,5 @@
+import { defineSecret } from "firebase-functions/params";
+import { deliverInvitation, smtpSend } from "./mail";
 import { getFirestore } from "firebase-admin/firestore";
 import {
   onCall,
@@ -74,4 +76,38 @@ export const finalizeProjectDraft = onObjectFinalized(
       Number(event.data.size),
       event.data.contentType,
     ),
+);
+
+export const getProjectInvitation = onCall(options, (request) =>
+  service().sharedInvitation(request.data),
+);
+export const readSharedProject = onCall(options, (request) =>
+  service().sharedInvitation(request.data, true),
+);
+export const updateProjectMemberRole = callable((s, a, d) =>
+  s.updateMemberRole(a, d),
+);
+const invitationSmtp = defineSecret("INVITATION_SMTP_URL");
+export const sendProjectInvitation = onDocumentCreated(
+  {
+    ...options,
+    document: "invitationMail/{mailId}",
+    retry: true,
+    secrets: [invitationSmtp],
+  },
+  async (event) => {
+    const db = getFirestore();
+    await deliverInvitation(db, event.params.mailId, async (message) => {
+      if (process.env.FUNCTIONS_EMULATOR === "true") {
+        // Local-only inbox: never send real mail from emulator tests.
+        await db.doc(`emulatorMail/${event.params.mailId}`).set(message);
+      } else {
+        await smtpSend(
+          invitationSmtp.value(),
+          process.env.INVITATION_FROM || "",
+          message,
+        );
+      }
+    });
+  },
 );

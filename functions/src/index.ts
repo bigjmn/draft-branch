@@ -39,6 +39,10 @@ export const createUserProfile = functions.auth
   });
 
 export {
+  getProjectInvitation,
+  readSharedProject,
+  updateProjectMemberRole,
+  sendProjectInvitation,
   createProject,
   beginDraftUpload,
   commitDraft,

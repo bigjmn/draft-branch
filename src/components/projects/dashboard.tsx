@@ -1,4 +1,6 @@
 "use client";
+import { TypewriterLoader } from "@/components/ui/typewriter-loader";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
@@ -19,12 +21,7 @@ export function Dashboard() {
     if (!loading && (!user || user.isAnonymous))
       router.replace(user ? "/editor" : "/");
   }, [user, loading, router]);
-  if (loading || !user || user.isAnonymous)
-    return (
-      <main className="loading-state" role="status">
-        Opening your workspace…
-      </main>
-    );
+  if (loading || !user || user.isAnonymous) return <TypewriterLoader />;
   return (
     <ProjectList
       key={user.uid}
@@ -79,6 +76,7 @@ function ProjectList({ name }: { name: string }) {
         (filter === "owned" ? p.role === "owner" : p.role !== "owner")) &&
       p.title.toLowerCase().includes(query.toLowerCase()),
   );
+  if (projects === null && !error) return <TypewriterLoader />;
   return (
     <div className="dashboard">
       <nav className="workspace-nav" aria-label="Workspace">
@@ -145,9 +143,7 @@ function ProjectList({ name }: { name: string }) {
             </button>
           </div>
         ) : projects === null ? (
-          <p role="status" className="workspace-message">
-            Loading your projects…
-          </p>
+          <TypewriterLoader contained />
         ) : shown.length ? (
           <div className="project-grid">
             {shown.map((p) => (

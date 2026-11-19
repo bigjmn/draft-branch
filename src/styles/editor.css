@@ -543,10 +543,6 @@ dialog p {
 #toast.visible {
   opacity: 1;
 }
-.loading-state {
-  @apply min-h-screen grid place-items-center text-sm;
-  color: var(--muted);
-}
 .recovery-banner {
   @apply px-6 py-3 text-sm;
   background: #fff2d6;

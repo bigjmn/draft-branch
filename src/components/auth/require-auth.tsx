@@ -1,4 +1,6 @@
 "use client";
+import { TypewriterLoader } from "@/components/ui/typewriter-loader";
+
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "./auth-provider";
@@ -10,11 +12,6 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loading && !user) router.replace("/");
   }, [loading, user, router]);
-  if (!user)
-    return (
-      <main className="loading-state" role="status">
-        Opening your writing room…
-      </main>
-    );
+  if (!user) return <TypewriterLoader />;
   return children;
 }

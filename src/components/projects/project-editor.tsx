@@ -1,5 +1,8 @@
 "use client";
+import { TypewriterLoader } from "@/components/ui/typewriter-loader";
+
 import Link from "next/link";
+import { ReadOnlyScreenplay } from "./read-only-screenplay";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -20,12 +23,7 @@ export function EditorRoute() {
       else if (!user.isAnonymous && !pid) router.replace("/dashboard");
     }
   }, [loading, user, pid, router]);
-  if (loading || !user)
-    return (
-      <main className="loading-state" role="status">
-        Opening your writing room…
-      </main>
-    );
+  if (loading || !user) return <TypewriterLoader />;
   if (pid) {
     if (
       user.isAnonymous ||
@@ -46,7 +44,7 @@ export function EditorRoute() {
   return user.isAnonymous ? (
     <ScreenplayEditor key={user.uid} />
   ) : (
-    <main className="loading-state">Opening your dashboard…</main>
+    <TypewriterLoader />
   );
 }
 function Unavailable() {
@@ -115,18 +113,15 @@ function MemberEditor({
     };
   }, [uid, projectId, branch]);
   if (denied) return <Unavailable />;
-  if (!state)
-    return (
-      <main className="loading-state" role="status">
-        Checking project access…
-      </main>
-    );
+  if (!state) return <TypewriterLoader />;
   if (state.role === "reviewer")
     return (
-      <main className="access-state">
-        <h1>{state.draft.draft.title}</h1>
-        <p>You have read-only access. The review workspace is coming soon.</p>
-        <Link href="/dashboard">Back to dashboard</Link>
+      <main className="invitation-page">
+        <header className="invitation-header">
+          <Link href="/dashboard">← Projects</Link>
+          <span>Reader · {branch}</span>
+        </header>
+        <ReadOnlyScreenplay draft={state.draft.draft} />
       </main>
     );
   return (

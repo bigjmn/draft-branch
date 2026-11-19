@@ -1,0 +1,305 @@
+/* Shared loader sizing, placement, and animation. */
+.typewriter-loading {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  background: var(--color-workspace);
+  color: var(--ink);
+}
+.typewriter-loading .typewriter-loader {
+  display: block;
+  width: min(440px, 85vw);
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.typewriter-loading--contained {
+  min-height: 280px;
+  height: 100%;
+  background: transparent;
+}
+.typewriter-loading--contained .typewriter-loader {
+  width: min(320px, 80%);
+}
+
+.typewriter-carriage {
+  animation: typewriter-carriage 4s infinite;
+}
+.typewriter-key {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.typewriter-typebar {
+  animation: typewriter-strike 4s infinite;
+  transform-box: fill-box;
+  transform-origin: bottom center;
+}
+@keyframes typewriter-carriage {
+  0%,
+  5% {
+    transform: translateX(0);
+  }
+  6%,
+  13% {
+    transform: translateX(4px);
+  }
+  14%,
+  21% {
+    transform: translateX(8px);
+  }
+  22%,
+  29% {
+    transform: translateX(12px);
+  }
+  30%,
+  37% {
+    transform: translateX(16px);
+  }
+  38%,
+  45% {
+    transform: translateX(20px);
+  }
+  46%,
+  53% {
+    transform: translateX(24px);
+  }
+  54%,
+  61% {
+    transform: translateX(28px);
+  }
+  62%,
+  72% {
+    transform: translateX(32px);
+  }
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+}
+.typewriter-key-1 {
+  animation: typewriter-press-1 4s infinite;
+}
+@keyframes typewriter-press-1 {
+  0%,
+  4%,
+  10%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  6%,
+  7% {
+    transform: translateY(3px);
+    opacity: 0.45;
+  }
+}
+.typewriter-key-7 {
+  animation: typewriter-press-7 4s infinite;
+}
+@keyframes typewriter-press-7 {
+  0%,
+  12%,
+  18%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  14%,
+  15% {
+    transform: translateY(3px);
+    opacity: 0.45;
+  }
+}
+.typewriter-key-4 {
+  animation: typewriter-press-4 4s infinite;
+}
+@keyframes typewriter-press-4 {
+  0%,
+  20%,
+  26%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  22%,
+  23% {
+    transform: translateY(3px);
+    opacity: 0.45;
+  }
+}
+.typewriter-key-10 {
+  animation: typewriter-press-10 4s infinite;
+}
+@keyframes typewriter-press-10 {
+  0%,
+  28%,
+  34%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  30%,
+  31% {
+    transform: translateY(3px);
+    opacity: 0.45;
+  }
+}
+.typewriter-key-2 {
+  animation: typewriter-press-2 4s infinite;
+}
+@keyframes typewriter-press-2 {
+  0%,
+  36%,
+  42%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  38%,
+  39% {
+    transform: translateY(3px);
+    opacity: 0.45;
+  }
+}
+.typewriter-key-8 {
+  animation: typewriter-press-8 4s infinite;
+}
+@keyframes typewriter-press-8 {
+  0%,
+  44%,
+  50%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  46%,
+  47% {
+    transform: translateY(3px);
+    opacity: 0.45;
+  }
+}
+.typewriter-key-5 {
+  animation: typewriter-press-5 4s infinite;
+}
+@keyframes typewriter-press-5 {
+  0%,
+  52%,
+  58%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  54%,
+  55% {
+    transform: translateY(3px);
+    opacity: 0.45;
+  }
+}
+.typewriter-key-9 {
+  animation: typewriter-press-9 4s infinite;
+}
+@keyframes typewriter-press-9 {
+  0%,
+  60%,
+  66%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  62%,
+  63% {
+    transform: translateY(3px);
+    opacity: 0.45;
+  }
+}
+@keyframes typewriter-strike {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  5%,
+  9% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  6% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  13%,
+  17% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  14% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  21%,
+  25% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  22% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  29%,
+  33% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  30% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  37%,
+  41% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  38% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  45%,
+  49% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  46% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  53%,
+  57% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  54% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  61%,
+  65% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  62% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typewriter-carriage,
+  .typewriter-key,
+  .typewriter-typebar {
+    animation: none;
+  }
+  .typewriter-typebar {
+    opacity: 0;
+  }
+}

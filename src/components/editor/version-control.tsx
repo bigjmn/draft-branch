@@ -1,4 +1,6 @@
 "use client";
+import { TypewriterLoader } from "@/components/ui/typewriter-loader";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createBranch,
@@ -461,7 +463,7 @@ function VersionPanel({
                   </div>
                   <div className="vc-history" aria-label="Commit history">
                     {history === null ? (
-                      <p role="status">Loading history…</p>
+                      <TypewriterLoader contained />
                     ) : (
                       history.map((r, i) => (
                         <button
@@ -532,12 +534,7 @@ function ChangeList({
 }: {
   changes: ReturnType<typeof draftChanges> | null;
 }) {
-  if (!changes)
-    return (
-      <p className="vc-placeholder" role="status">
-        Loading changes…
-      </p>
-    );
+  if (!changes) return <TypewriterLoader contained />;
   if (!changes.length)
     return (
       <div className="vc-placeholder">✓ No changes since this revision.</div>

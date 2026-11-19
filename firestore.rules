@@ -8,6 +8,9 @@ service cloud.firestore {
     function owner(projectId) {
       return member(projectId) && get(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid)).data.role == 'owner';
     }
+    match /invitationMail/{id} { allow read, write: if false; }
+    match /invitationLimits/{id} { allow read, write: if false; }
+    match /emulatorMail/{id} { allow read, write: if false; }
     // All mutations go through authenticated callable APIs / trusted workers.
     match /users/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;

@@ -93,7 +93,7 @@ Your departure from a shared project does not necessarily remove your earlier co
 
 Our [Privacy Policy](/privacy) describes how we collect, use, retain, and disclose personal information.
 
-Private projects are not publicly accessible merely because someone possesses a project link. Nevertheless, “private” does not mean that the Service is end-to-end encrypted or that authorized personnel are technically unable to access stored content.
+Ordinary project URLs do not grant access to private projects. An invitation link intentionally grants read-only access to anyone holding it until it expires or is revoked, including anyone it is forwarded to. Accepting an invitation with a verified account grants the assigned membership role; revoking the link does not remove an already accepted membership. Nevertheless, “private” does not mean that the Service is end-to-end encrypted or that authorized personnel are technically unable to access stored content.
 
 We limit personnel access to private content to circumstances reasonably necessary to operate and secure the Service, provide requested support, investigate abuse or suspected violations, or comply with legal obligations. Such access does not authorize creative exploitation or model training.
 

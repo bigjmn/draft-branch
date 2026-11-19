@@ -37,6 +37,18 @@ function fixture() {
   return { objects, s: new ProjectService(db, objects) };
 }
 const unique = () => require("node:crypto").randomUUID();
+async function inviteWithToken(s, a, data) {
+  const result = await s.inviteMember(a, data);
+  const mail = (
+    await db
+      .doc(`invitationMail/${hash(`${data.projectId}:${result.invitationId}`)}`)
+      .get()
+  ).data();
+  return {
+    ...result,
+    token: new URLSearchParams(new URL(mail.link).hash.slice(1)).get("token"),
+  };
+}
 async function prepare(
   s,
   objects,
@@ -145,7 +157,7 @@ test(
       ).draft.blocks,
       draft.blocks,
     );
-    const invite = await s.inviteMember(alice, {
+    const invite = await inviteWithToken(s, alice, {
       projectId: pid,
       email: bob.email,
       role: "editor",
@@ -319,7 +331,7 @@ test(
         title: "Revocation",
         requestId: unique(),
       });
-    const invite = await s.inviteMember(alice, {
+    const invite = await inviteWithToken(s, alice, {
       projectId: p.projectId,
       email: bob.email,
       role: "editor",
@@ -409,7 +421,7 @@ test(
       ).data().status,
       "rejected",
     );
-    const invite = await s.inviteMember(alice, {
+    const invite = await inviteWithToken(s, alice, {
       projectId: p.projectId,
       email: bob.email,
       role: "editor",
@@ -463,5 +475,263 @@ test(
     assert.equal(loaded.baseCommit, p.head);
     assert.equal(loaded.version, 2);
     assert.notEqual(loaded.head, p.head);
+  },
+);
+
+test(
+  "guest capability reads only committed main; tokens are required, scoped, expiring and revocable",
+  { skip: !enabled },
+  async () => {
+    const { s, objects } = fixture();
+    const p = await s.createProject(alice, {
+      title: "Shared script",
+      requestId: unique(),
+    });
+    const invite = await inviteWithToken(s, alice, {
+      projectId: p.projectId,
+      email: bob.email,
+      role: "editor",
+      requestId: unique(),
+    });
+    const draft = blankSnapshot("Unpublished secret");
+    draft.blocks[0].text = "INT. PRIVATE ROOM - NIGHT";
+    await save(s, objects, alice, p.projectId, "main", p.head, 0, draft);
+    const read = await s.sharedInvitation(
+      { ...invite, branchId: "private", commitId: "fake" },
+      true,
+    );
+    assert.equal(read.draft.title, "Shared script");
+    assert.equal(read.draft.blocks[0].text, "");
+    assert.equal(read.role, "editor");
+    assert.equal("email" in read, false);
+    const stored = (
+      await db
+        .doc(`projects/${p.projectId}/invitations/${invite.invitationId}`)
+        .get()
+    ).data();
+    assert.equal(stored.tokenHash, hash(invite.token));
+    assert.equal(JSON.stringify(stored).includes(invite.token), false);
+    await assert.rejects(
+      s.sharedInvitation({ ...invite, token: "0".repeat(64) }, true),
+      { code: "permission-denied" },
+    );
+    await assert.rejects(
+      s.acceptInvitation(bob, { ...invite, token: undefined }),
+      { code: "permission-denied" },
+    );
+    const other = await s.createProject(alice, {
+      title: "Other",
+      requestId: unique(),
+    });
+    await assert.rejects(
+      s.sharedInvitation({ ...invite, projectId: other.projectId }, true),
+      { code: "permission-denied" },
+    );
+    await s.acceptInvitation(bob, invite);
+    await s.revokeInvitation(alice, invite);
+    await assert.rejects(s.sharedInvitation(invite, true), {
+      code: "permission-denied",
+    });
+    // Revoking guest capability does not silently remove an accepted member.
+    assert.equal(
+      (await s.loadDraft(bob, { projectId: p.projectId, branchId: "main" }))
+        .draft.title,
+      "Shared script",
+    );
+  },
+);
+
+test(
+  "readers cannot branch, upload or commit; owner changes roles and removal revokes accepted links",
+  { skip: !enabled },
+  async () => {
+    const { s } = fixture();
+    const p = await s.createProject(alice, {
+      title: "Permissions",
+      requestId: unique(),
+    });
+    const invite = await inviteWithToken(s, alice, {
+      projectId: p.projectId,
+      email: bob.email,
+      role: "reviewer",
+      requestId: unique(),
+    });
+    await s.acceptInvitation(bob, invite);
+    await assert.rejects(
+      s.createBranch(bob, {
+        projectId: p.projectId,
+        name: "alternate",
+        sourceBranch: "main",
+        expectedHead: p.head,
+        requestId: unique(),
+      }),
+      { code: "permission-denied" },
+    );
+    await assert.rejects(
+      s.beginDraftUpload(bob, {
+        projectId: p.projectId,
+        branchId: "main",
+        baseCommit: p.head,
+        expectedVersion: 0,
+        contentHash: "0".repeat(64),
+        requestId: unique(),
+      }),
+      { code: "permission-denied" },
+    );
+    await assert.rejects(queue(s, bob, p.projectId, "main", p.head, 0), {
+      code: "permission-denied",
+    });
+    await assert.rejects(
+      s.updateMemberRole(bob, {
+        projectId: p.projectId,
+        uid: bob.uid,
+        role: "editor",
+      }),
+      { code: "permission-denied" },
+    );
+    await s.updateMemberRole(alice, {
+      projectId: p.projectId,
+      uid: bob.uid,
+      role: "editor",
+    });
+    await s.createBranch(bob, {
+      projectId: p.projectId,
+      name: "alternate",
+      sourceBranch: "main",
+      expectedHead: p.head,
+      requestId: unique(),
+    });
+    await s.removeMember(alice, { projectId: p.projectId, uid: bob.uid });
+    await assert.rejects(s.sharedInvitation(invite, true), {
+      code: "permission-denied",
+    });
+    await assert.rejects(s.acceptInvitation(bob, invite), {
+      code: "failed-precondition",
+    });
+  },
+);
+
+test(
+  "expired links and nonowner invitations are denied",
+  { skip: !enabled },
+  async () => {
+    const { s } = fixture();
+    const p = await s.createProject(alice, {
+      title: "Expiry",
+      requestId: unique(),
+    });
+    await assert.rejects(
+      s.inviteMember(eve, {
+        projectId: p.projectId,
+        email: bob.email,
+        role: "editor",
+        requestId: unique(),
+      }),
+      { code: "permission-denied" },
+    );
+    const invite = await inviteWithToken(s, alice, {
+      projectId: p.projectId,
+      email: bob.email,
+      role: "reviewer",
+      requestId: unique(),
+    });
+    await db
+      .doc(`projects/${p.projectId}/invitations/${invite.invitationId}`)
+      .update({ expiresAt: Timestamp.fromMillis(Date.now() - 1) });
+    await assert.rejects(s.sharedInvitation(invite, true), {
+      code: "permission-denied",
+    });
+  },
+);
+
+test(
+  "invitation retries do not duplicate emails; successful worker deletes bearer link and skips replay",
+  { skip: !enabled },
+  async () => {
+    const { deliverInvitation } = require("../lib/projects/mail");
+    const { s } = fixture();
+    const p = await s.createProject(alice, {
+      title: "Email",
+      requestId: unique(),
+    });
+    const input = {
+      projectId: p.projectId,
+      email: bob.email,
+      role: "editor",
+      requestId: unique(),
+    };
+    const first = await s.inviteMember(alice, input),
+      second = await s.inviteMember(alice, input);
+    assert.equal(first.invitationId, second.invitationId);
+    const mailId = hash(`${p.projectId}:${first.invitationId}`);
+    let sent = 0;
+    const send = async (message) => {
+      sent++;
+      assert.equal(message.to, bob.email);
+      assert.match(message.text, /#token=[0-9a-f]{64}/);
+      assert.match(message.text, /read-only/);
+    };
+    await deliverInvitation(db, mailId, send);
+    await deliverInvitation(db, mailId, send);
+    assert.equal(sent, 1);
+    assert.equal(
+      (await db.doc(`invitationMail/${mailId}`).get()).data().link,
+      undefined,
+    );
+    assert.equal(
+      (
+        await db
+          .doc(`projects/${p.projectId}/invitations/${first.invitationId}`)
+          .get()
+      ).data().deliveryStatus,
+      "sent",
+    );
+  },
+);
+
+test(
+  "email worker retries safely and stops after bounded failures; revoked invitations never send",
+  { skip: !enabled },
+  async () => {
+    const { deliverInvitation } = require("../lib/projects/mail");
+    const { s } = fixture();
+    const p = await s.createProject(alice, {
+      title: "Retry",
+      requestId: unique(),
+    });
+    const invite = await s.inviteMember(alice, {
+      projectId: p.projectId,
+      email: bob.email,
+      role: "reviewer",
+      requestId: unique(),
+    });
+    const mailId = hash(`${p.projectId}:${invite.invitationId}`);
+    for (let i = 0; i < 5; i++)
+      await assert.rejects(
+        deliverInvitation(db, mailId, async () => {
+          throw new Error("sensitive provider response");
+        }),
+        { message: "Invitation email delivery failed." },
+      );
+    await deliverInvitation(db, mailId, async () => {
+      assert.fail("should stop retrying");
+    });
+    const job = (await db.doc(`invitationMail/${mailId}`).get()).data();
+    assert.equal(job.status, "failed");
+    assert.equal(job.link, undefined);
+    const revoked = await s.inviteMember(alice, {
+      projectId: p.projectId,
+      email: bob.email,
+      role: "reviewer",
+      requestId: unique(),
+    });
+    await s.revokeInvitation(alice, revoked);
+    await deliverInvitation(
+      db,
+      hash(`${p.projectId}:${revoked.invitationId}`),
+      async () => {
+        assert.fail("revoked email must not send");
+      },
+    );
   },
 );

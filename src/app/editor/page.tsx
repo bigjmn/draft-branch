@@ -1,12 +1,9 @@
+import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 import { Suspense } from "react";
 import { EditorRoute } from "@/components/projects/project-editor";
 export default function EditorPage() {
   return (
-    <Suspense
-      fallback={
-        <main className="loading-state">Opening your writing room…</main>
-      }
-    >
+    <Suspense fallback={<TypewriterLoader />}>
       <EditorRoute />
     </Suspense>
   );

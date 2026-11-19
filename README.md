@@ -618,3 +618,7 @@ Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_FIREBASE_API_KEY` to yo
 
 The product is DraftBranch; npm package identifiers use lowercase `draftbranch`.
 New drafts, project recovery copies, and theme preferences use the `draftbranch.` storage namespace. The compatibility reader in `src/lib/storage.ts` falls back to the previous namespace so existing browser data remains accessible. Existing values are not deleted or overwritten by the rename. The hosted preview URL retains its original hostname until hosting is renamed separately.
+
+## Email access sharing
+
+Owners can invite Readers and Editors by email, manage roles, and revoke access. Invitation links support account-free reading; contributing requires accepting with a verified account matching the invited email. See [sharing setup and permissions](docs/sharing.md) for SMTP configuration, deployment, and security behavior.

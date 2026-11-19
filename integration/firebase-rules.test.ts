@@ -128,3 +128,22 @@ test("canonical drafts and Git objects are not directly accessible", async () =>
     await assertFails(getBytes(ref(user("owner").storage(), path)));
   }
 });
+
+test("mail queue, token-bearing emulator inbox and invitation quotas are never client-readable or writable", async () => {
+  for (const context of [
+    user("owner"),
+    user("editor"),
+    env.unauthenticatedContext(),
+  ]) {
+    for (const path of [
+      "invitationMail/test",
+      "invitationLimits/test",
+      "emulatorMail/test",
+    ]) {
+      await assertFails(getDoc(doc(context.firestore(), path)));
+      await assertFails(
+        setDoc(doc(context.firestore(), path), { link: "forged" }),
+      );
+    }
+  }
+});
