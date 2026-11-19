@@ -1,4 +1,5 @@
 "use client";
+import { readStoredValue } from "@/lib/storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseDraft } from "@/lib/editor/draft";
 import { createBlankDraft, createSampleDraft } from "@/lib/editor/sample";
@@ -42,7 +43,7 @@ export function useDraft() {
       window.history.replaceState(window.history.state, "", url);
     }
     try {
-      const raw = fresh.current ? null : localStorage.getItem(STORAGE_KEY);
+      const raw = fresh.current ? null : readStoredValue(localStorage, STORAGE_KEY);
       if (fresh.current) initial = createBlankDraft();
       else if (raw) initial = parseDraft(raw);
       setStatus("saved");

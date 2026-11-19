@@ -1,10 +1,12 @@
-# Scriptroom
+# DraftBranch
 
 A screenplay editor for film and television, with a long-term goal of bringing Git-style version control and private collaboration to writing projects.
 
 The writing experience should feel familiar to users of Final Draft or WriterDuet. The collaboration model should let writers create alternate versions, publish meaningful revisions, review changes, and merge work without needing a command line.
 
-**Current stage:** a working browser-local editor built with Next.js, React, TypeScript, and Tailwind CSS. Accounts, cloud storage, repositories, branches, and collaborative merges are planned, not implemented.
+**Current stage:** a working Next.js/TypeScript/Tailwind editor with Firebase sign-in, plus an implemented backend foundation for private projects, cloud drafts, real Git commits, branches, and invitations. The dashboard and project editor are connected to the backend APIs, including private membership gates and cloud autosave. Anonymous trials remain browser-local. Firebase backend deployment is still required for production cloud flows. Merges are still planned.
+
+See [Backend implementation and collaboration walkthrough](docs/backend.md) for APIs, schemas, authorization, emulator tests, deployment, and the two-writer workflow.
 
 ## Contents
 
@@ -24,7 +26,7 @@ The writing experience should feel familiar to users of Final Draft or WriterDue
 
 ## Product direction
 
-Scriptroom is intended to become “GitHub for screenplays”: private projects, invited collaborators, alternate drafts, revision history, and reviewed merges, presented through a writing-focused interface.
+DraftBranch is intended to become “GitHub for screenplays”: private projects, invited collaborators, alternate drafts, revision history, and reviewed merges, presented through a writing-focused interface.
 
 The main product principle is to separate **saving writing** from **publishing a revision**. Automatic saving protects work in progress. Publishing records an intentional change that other project members can review.
 
@@ -74,7 +76,7 @@ These are product conventions for future work, not a list of implemented control
 - Responsive application layout and externalized styles.
 - A landing page at `/` with account creation and sign-in through Firebase Authentication (email and password, or Google). "Try the Editor" signs the visitor in as an anonymous guest and opens a blank project (`/editor?new`). The editor is at `/editor` and redirects signed-out visitors to `/`.
 
-The interface's “Main draft,” “LOCAL,” and “PRIVATE” labels are presentation context. They do not implement Git branches, application accounts, or project access controls. The hosted preview's private audience is a separate Sites hosting feature.
+Project editors use membership-checked cloud drafts on main. Anonymous trial editors use local storage and show LOCAL. The hosted preview's private audience is a separate Sites hosting feature.
 
 ## Development setup
 
@@ -103,7 +105,7 @@ To choose a different port:
 npm run dev -- --port 3001
 ```
 
-No secrets are required. Authentication uses the `draftbranch` Firebase project; its public web config is in `src/lib/firebase/client.ts`, and `.firebaserc` / `firebase.json` select the project and its enabled sign-in providers. Browser storage is still the only persistence layer for drafts.
+No secrets are required. Authentication uses the `draftbranch` Firebase project; its public web config is in `src/lib/firebase/client.ts`, and `.firebaserc` / `firebase.json` select the project and its enabled sign-in providers. Registered users land on /dashboard and can open or create private projects with cloud autosave; anonymous trials remain browser-local.
 
 The project also has a Firestore database (`firestore.rules`), a Cloud Storage bucket (`storage.rules`) and Cloud Functions (`functions/`, its own npm package). The `createUserProfile` function writes a `users/{uid}` document when someone creates an email or Google account; anonymous guests get none. To deploy the rules and functions:
 
@@ -317,7 +319,7 @@ When adding an element type, update the labels, Enter transitions, Fountain seri
 Drafts use the localStorage key:
 
 ```text
-scriptroom.editor.v1
+draftbranch.editor.v1
 ```
 
 The stored value is `{ title, blocks: [{ id, type, text }] }`. Keep this format compatible with the original prototype until an explicit migration is implemented.
@@ -368,7 +370,7 @@ This is the normal Node-server deployment path.
 
 ### Current private preview
 
-[Open the private Scriptroom preview](https://scriptroom-editor-jessen.alpinehibiscus16.chatgpt.site).
+[Open the private DraftBranch preview](https://scriptroom-editor-jessen.alpinehibiscus16.chatgpt.site).
 
 The existing Sites project is configured in `.openai/hosting.json`. Its static output directory is `out/`.
 
@@ -384,10 +386,10 @@ Future server endpoints require a Node-capable host, a supported deployment adap
 
 ## Known limitations
 
-- Sign-in exists, but drafts are not tied to accounts: they stay in the browser's localStorage, so different accounts on the same browser share one draft. There is no project membership, cloud drafts, or cross-device synchronization.
-- The `/editor` gate is client-side only (the app is statically exported). It is a navigation guard, not access control; real protection will come from Firestore/Storage security rules once drafts move to the cloud.
+- Guest trial drafts use the legacy browser-local key. Cloud project drafts and recovery are scoped to account/project/branch; migrating a guest draft into a project is not implemented.
+- The `/editor` gate is client-side only (the app is statically exported). It is a navigation guard, not access control; the new backend enforces authorization through callable APIs and Firestore/Storage rules independently of that gate.
 - No password reset or email verification yet.
-- No actual screenplay repositories, commits, branches, history comparison, or merging.
+- Real Git objects, commits, and branches are implemented in the backend, but there are no project/history UI controls, history comparison, or merging yet.
 - No import UI, including JSON restore, Fountain import, or FDX import.
 - No multiple-document/project management.
 - No character autocomplete, rich-text marks, title-page editor, or dual dialogue.
@@ -400,7 +402,7 @@ Future server endpoints require a Node-capable host, a supported deployment adap
 
 ## Planned product and backend architecture
 
-Everything in this section describes the intended direction. It is not implemented infrastructure.
+This section records the original product direction and remaining roadmap. The current implementation and its deliberate differences are documented in [the backend guide](docs/backend.md).
 
 ### Three separate persistence layers
 
@@ -414,7 +416,7 @@ Autosaving should not create a commit per keystroke. Working drafts need a user,
 
 ### Firebase and Git responsibilities
 
-The proposed backend is **Firebase plus a dedicated Git service**.
+The backend uses **Firebase plus a Git object service in Cloud Functions**. The table below includes future responsibilities; the backend guide distinguishes what is implemented.
 
 | Component               | Planned responsibility                                                                    |
 | ----------------------- | ----------------------------------------------------------------------------------------- |
@@ -425,9 +427,9 @@ The proposed backend is **Firebase plus a dedicated Git service**.
 | Git service             | Commits, branch refs, ancestry, diffs, merges, repository integrity                       |
 | Background workers      | Imports, PDF generation, notifications, backups                                           |
 
-Keep full snapshots outside single metadata documents when size warrants it. Do not put authoritative Git repositories on an ephemeral container filesystem. The initial Git service proposal is a dedicated service with persistent disk, isolated temporary workspaces, serialized repository mutations, and tested backups.
+Keep full snapshots outside single metadata documents when size warrants it. Do not put authoritative Git repositories on an ephemeral container filesystem. The implementation uses temporary workspaces to generate immutable Git objects in Cloud Storage and transactional branch refs in Firestore. A dedicated persistent-disk service remains an option if a full Git remote is needed.
 
-Git is authoritative for committed screenplay content and branch history. Firestore is authoritative for application records. Commit summaries cached in Firestore should be rebuildable from Git.
+Git objects are authoritative for committed screenplay content and ancestry. Firestore is authoritative for branch refs and application records. Commit summaries can be rebuilt from objects, but refs and permissions require Firestore backups.
 
 The browser can use an application API rather than running a complete Git client. External Git clients and protocol compatibility can wait.
 
@@ -598,6 +600,21 @@ Recommended order from the current codebase:
 4. **Version the document model:** add document/scene identities and migrate legacy drafts without dropping content.
 5. **Complete import/export basics:** Fountain import and round-trip fixtures; investigate limited FDX import with real files.
 6. **Prove Git merging in isolation:** implement a small structural merge prototype before connecting cloud permissions and UI workflows.
-7. **Introduce private cloud projects:** proceed with accounts and invitations once persistence boundaries and document identity are clear.
+7. **Connect private cloud projects:** the backend APIs now exist; add project selection, account/project/branch-scoped recovery, cloud saves, commit controls, and invitation acceptance. See the [backend integration sequence](docs/backend.md#next-steps).
 
 Keep the central acceptance test in view: two writers should be able to work independently, understand their differences, and combine their changes without losing writing or having to learn Git commands.
+
+### Final Draft export
+
+Choose **Export → Final Draft (.fdx)** to download the current working draft. The file includes all seven screenplay element types, multiline text, a title page, 12-point Courier, and US Letter layout settings. XML special characters are escaped; characters forbidden by XML 1.0 are replaced with the replacement character. Theme colors do not affect export. Pagination is recalculated by the receiving app. Git history, collaboration metadata, and revision marks are not included. XML validity and serialization are tested; opening in the Final Draft desktop application has not yet been verified. FDX import is not implemented.
+
+
+### Local Firebase configuration
+
+Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_FIREBASE_API_KEY` to your Firebase web API key. Set the same variable in the hosting build environment before deploying. Local `.env` files are ignored by Git; the example contains no real credentials. The browser key is still public in the compiled frontend: Firebase Authentication, Security Rules, and appropriate API-key restrictions protect the project. Never put service-account credentials or server API secrets in a `NEXT_PUBLIC_` variable.
+
+
+### Brand and local-data compatibility
+
+The product is DraftBranch; npm package identifiers use lowercase `draftbranch`.
+New drafts, project recovery copies, and theme preferences use the `draftbranch.` storage namespace. The compatibility reader in `src/lib/storage.ts` falls back to the previous namespace so existing browser data remains accessible. Existing values are not deleted or overwritten by the rename. The hosted preview URL retains its original hostname until hosting is renamed separately.

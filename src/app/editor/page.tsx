@@ -1,10 +1,13 @@
-import { RequireAuth } from "@/components/auth/require-auth";
-import { ScreenplayEditor } from "@/components/editor/screenplay-editor";
-
+import { Suspense } from "react";
+import { EditorRoute } from "@/components/projects/project-editor";
 export default function EditorPage() {
   return (
-    <RequireAuth>
-      <ScreenplayEditor />
-    </RequireAuth>
+    <Suspense
+      fallback={
+        <main className="loading-state">Opening your writing room…</main>
+      }
+    >
+      <EditorRoute />
+    </Suspense>
   );
 }

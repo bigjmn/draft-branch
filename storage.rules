@@ -1,12 +1,34 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Each signed-in user owns the files under users/{their uid}/.
-    // Everything else is closed.
+    // Retain the existing personal-file namespace; deleting one's file is valid.
     match /users/{uid}/{allPaths=**} {
-      allow read: if request.auth != null && request.auth.uid == uid;
-      allow write: if request.auth != null && request.auth.uid == uid
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
         && request.resource.size < 20 * 1024 * 1024;
     }
+    match /projects/{projectId}/uploads/{uid}/{uploadId} {
+      function member() {
+        return firestore.get(/databases/(default)/documents/projects/$(projectId)/members/$(uid)).data;
+      }
+      function ticket() {
+        return firestore.get(/databases/(default)/documents/projects/$(projectId)/uploads/$(uploadId)).data;
+      }
+      // Immutable staging upload authorized by a short-lived server-issued ticket.
+      allow create: if resource == null && request.auth != null && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && member().role in ['owner', 'editor']
+        && ticket().actorUid == uid
+        && ticket().status == 'awaiting_upload'
+        && ticket().expiresAt > request.time
+        && ticket().path == 'projects/' + projectId + '/uploads/' + uid + '/' + uploadId
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType == 'application/json';
+      allow read, update, delete: if false;
+    }
+    // Validated drafts and Git objects are served by membership-checking APIs.
+    // No public download tokens or long-lived signed URLs are issued.
+    match /projects/{projectId}/drafts/{allPaths=**} { allow read, write: if false; }
+    match /projects/{projectId}/git/{allPaths=**} { allow read, write: if false; }
   }
 }

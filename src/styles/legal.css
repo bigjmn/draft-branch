@@ -1,0 +1,105 @@
+.legal-page {
+  min-height: 100vh;
+  padding: 32px 24px 64px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.legal-nav,
+.legal-content,
+.legal-footer {
+  max-width: 780px;
+  margin-inline: auto;
+}
+.legal-nav {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.legal-nav a:first-child {
+  margin-right: auto;
+}
+.legal-page a {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.legal-content {
+  padding-block: 40px;
+  font-size: 16px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.legal-content h1 {
+  font-family: var(--font-ui);
+  font-size: clamp(28px, 5vw, 40px);
+  line-height: 1.2;
+  font-weight: 700;
+  margin-bottom: 28px;
+}
+.legal-content h2 {
+  font-size: 21px;
+  font-weight: 650;
+  line-height: 1.4;
+  margin: 36px 0 14px;
+}
+.legal-content p {
+  margin: 0 0 18px;
+}
+.legal-content ul,
+.legal-content ol {
+  padding-left: 26px;
+  margin-bottom: 18px;
+}
+.legal-content ul {
+  list-style: disc;
+}
+.legal-content ol {
+  list-style: decimal;
+}
+.legal-content li {
+  margin-block: 7px;
+}
+.legal-footer {
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.auth-agreement {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin: 18px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.auth-agreement input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: #0d9488;
+}
+.auth-agreement a {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.auth-agreement input:focus-visible,
+.auth-agreement a:focus-visible,
+.legal-page a:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+
+/* The landing card stays light even when the workspace theme is dark. */
+.landing .auth-agreement {
+  color: #55555f;
+}
+.landing .auth-agreement a {
+  color: #0f766e;
+}

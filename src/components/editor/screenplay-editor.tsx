@@ -1,6 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { downloadDraft, wordCount } from "@/lib/editor/draft";
+import {
+  downloadDraft,
+  wordCount,
+  type ExportFormat,
+} from "@/lib/editor/draft";
 import {
   ELEMENT_LABELS,
   type EditorLayout,
@@ -12,9 +16,44 @@ import { EditorDialog, type DialogKind } from "./editor-dialog";
 import { Sidebar } from "./sidebar";
 import { Toolbar } from "./toolbar";
 import { useDraft } from "./use-draft";
+import { useProjectDraft, type EditorProject } from "./use-project-draft";
+import { ThemeToggle } from "@/components/theme/theme-provider";
+import Link from "next/link";
+import { VersionControl } from "./version-control";
 
-export function ScreenplayEditor() {
-  const { draft, status, recoveryError, update, save } = useDraft();
+export function ScreenplayEditor({ project }: { project?: EditorProject }) {
+  return project ? <CloudEditor project={project} /> : <LocalEditor />;
+}
+function LocalEditor() {
+  const state = useDraft();
+  return <EditorView state={state} />;
+}
+function CloudEditor({ project }: { project: EditorProject }) {
+  const state = useProjectDraft(project);
+  return (
+    <EditorView
+      state={state}
+      cloud
+      project={project}
+      getVersion={state.getVersion}
+      canPublish={state.canPublish}
+    />
+  );
+}
+function EditorView({
+  state,
+  cloud = false,
+  project,
+  getVersion,
+  canPublish,
+}: {
+  state: ReturnType<typeof useDraft>;
+  cloud?: boolean;
+  project?: EditorProject;
+  getVersion?: () => number;
+  canPublish?: () => boolean;
+}) {
+  const { draft, status, recoveryError, update, save } = state;
   const canvas = useRef<CanvasHandle>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const [layout, setLayout] = useState<EditorLayout>({ pages: 1, scenes: [] });
@@ -28,7 +67,7 @@ export function ScreenplayEditor() {
 
   useEffect(() => {
     if (!draft) return;
-    document.title = `${draft.title} — Scriptroom`;
+    document.title = `${draft.title} — DraftBranch`;
     if (title.current && !hydratedTitle.current) {
       title.current.textContent = draft.title;
       hydratedTitle.current = true;
@@ -45,7 +84,9 @@ export function ScreenplayEditor() {
         event.preventDefault();
         setToast(
           save()
-            ? "Draft saved on this device."
+            ? cloud
+              ? "Cloud save requested. Check the save status."
+              : "Draft saved on this device."
             : "Unable to save. Export a copy to keep your work.",
         );
       }
@@ -53,7 +94,7 @@ export function ScreenplayEditor() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [save]);
+  }, [save, cloud]);
 
   const onSelection = useCallback((id: string, next: ElementType) => {
     setSelectedId(id);
@@ -65,7 +106,7 @@ export function ScreenplayEditor() {
     },
     [draft, update],
   );
-  const onExport = (format: "fountain" | "json") => {
+  const onExport = (format: ExportFormat) => {
     if (draft) downloadDraft(draft, format);
     setDialog(null);
     setToast("Your screenplay has been exported.");
@@ -99,13 +140,28 @@ export function ScreenplayEditor() {
             {draft.title} <span>/</span> <strong>Screenplay</strong>
           </div>
           <div className="header-actions">
+            {cloud && (
+              <Link className="dashboard-back" href="/dashboard">
+                ← Projects
+              </Link>
+            )}
+            <VersionControl
+              project={project}
+              draft={draft}
+              saved={status === "saved"}
+              getVersion={getVersion}
+              canPublish={canPublish}
+            />
+            <ThemeToggle />
             <span id="saveStatus" role="status">
               {status === "saved" && <i />}
               {status === "saving"
                 ? "Saving…"
                 : status === "error"
                   ? "Not saved — export a copy"
-                  : "Saved locally"}
+                  : cloud
+                    ? "Saved to cloud"
+                    : "Saved locally"}
             </span>
             <button className="button" onClick={() => setDialog("export")}>
               Export <span>↗</span>
@@ -144,8 +200,9 @@ export function ScreenplayEditor() {
             <p>A little space for your next great story.</p>
           </div>
           <div className="draft-label">
-            <span className="branch-symbol">⑂</span> Main draft{" "}
-            <span className="local-badge">LOCAL</span>
+            <span className="branch-symbol">⑂</span>{" "}
+            {project?.branch || "Main draft"}{" "}
+            <span className="local-badge">{cloud ? "PRIVATE" : "LOCAL"}</span>
           </div>
         </section>
         <Toolbar

@@ -3,3 +3,9 @@
 @import "./editor.css";
 @import "./screenplay.css";
 @import "./landing.css";
+
+@import "./workspace.css";
+
+@import "./version-control.css";
+
+@import "./legal.css";

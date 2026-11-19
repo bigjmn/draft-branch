@@ -1,0 +1,403 @@
+/* Dashboard and shared theme chrome. Keep all visual decisions here. */
+body {
+  background: var(--color-workspace);
+  color: var(--ink);
+}
+.theme-toggle {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 11px;
+  white-space: nowrap;
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 12px;
+}
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.dashboard {
+  min-height: 100vh;
+  background: var(--color-workspace);
+}
+.workspace-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 25px 5vw;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.workspace-account {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+  color: var(--muted);
+}
+.workspace-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-main {
+  max-width: 1220px;
+  margin: auto;
+  padding: 66px 40px 35px;
+}
+.dashboard-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 48px;
+}
+.dashboard-heading h1 {
+  font-size: clamp(30px, 4vw, 44px);
+  max-width: none;
+  letter-spacing: -1px;
+  margin: 14px 0;
+}
+.dashboard-heading p,
+.empty-projects p,
+.project-card p {
+  color: var(--muted);
+  line-height: 1.7;
+}
+.primary-action {
+  display: inline-block;
+  background: var(--accent-fill);
+  color: var(--accent-text);
+  border-radius: 7px;
+  padding: 13px 19px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.project-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 25px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.project-filters {
+  display: flex;
+  gap: 7px;
+}
+.project-filters button {
+  padding: 9px 13px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.project-filters button[aria-pressed="true"] {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+.project-search,
+.create-project-dialog input {
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 11px 14px;
+  border-radius: 6px;
+  font: inherit;
+}
+.project-search:focus-visible,
+.create-project-dialog input:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.project-card {
+  display: block;
+  text-decoration: none;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 25px;
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+.project-card:hover {
+  border-color: var(--green);
+  transform: translateY(-2px);
+}
+.project-card-top,
+.project-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.project-glyph,
+.empty-mark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 52px;
+  border-radius: 7px;
+  background: var(--surface-hover);
+  color: var(--green);
+  font-size: 27px;
+}
+.project-privacy {
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 4px 9px;
+}
+.project-card h2 {
+  font:
+    24px Georgia,
+    serif;
+  margin: 28px 0 10px;
+  overflow-wrap: anywhere;
+}
+.project-card p {
+  font-size: 12px;
+  margin-bottom: 28px;
+}
+.project-card-bottom {
+  border-top: 1px solid var(--line);
+  padding-top: 17px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.project-card-bottom span:last-child {
+  color: var(--green);
+}
+.empty-projects {
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 65px 20px;
+}
+.empty-mark {
+  margin: 0 auto 22px;
+}
+.empty-projects h2 {
+  font:
+    28px Georgia,
+    serif;
+}
+.empty-projects p {
+  max-width: 420px;
+  margin: 15px auto 25px;
+}
+.workspace-footnote {
+  margin-top: 36px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+.workspace-message {
+  padding: 55px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+.workspace-message button {
+  display: block;
+  margin: 20px auto;
+  text-decoration: underline;
+}
+.create-project-dialog {
+  max-width: calc(100vw - 32px);
+  width: 460px;
+  background: var(--surface-raised);
+}
+.create-project-dialog h2 {
+  margin-top: 15px;
+}
+.create-project-dialog label {
+  display: block;
+  margin: 25px 0 9px;
+}
+.create-project-dialog input {
+  width: 100%;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 22px;
+  align-items: center;
+  margin-top: 20px;
+}
+.form-error {
+  color: var(--danger);
+}
+.access-state {
+  max-width: 600px;
+  margin: 15vh auto;
+  padding: 30px;
+  text-align: center;
+}
+.access-state h1 {
+  max-width: none;
+}
+.access-state p {
+  color: var(--muted);
+  line-height: 1.7;
+  margin: 20px 0 30px;
+}
+.dashboard-back {
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  font-size: 11px;
+}
+/* Existing editor controls share the same palette in both modes. */
+#sidebar,
+.editor-shell header,
+.document-header,
+.toolbar,
+.editor-shell footer {
+  background: var(--surface);
+}
+.editor-shell .page {
+  box-shadow:
+    0 2px 8px #00000010,
+    0 0 0 1px var(--line);
+}
+.editor-shell .button {
+  background: var(--accent-fill);
+  color: var(--accent-text);
+}
+.document.active,
+.avatar {
+  background: var(--surface-hover);
+  color: var(--green);
+}
+.editor-shell
+  :is(
+    .eyebrow,
+    .private,
+    .project-detail,
+    .sidebar-label,
+    .scene-header,
+    .scene-link,
+    .scene-link small,
+    .scene-link .num,
+    .sidebar-bottom small,
+    .breadcrumb,
+    .breadcrumb span,
+    .document-header p,
+    .draft-label,
+    .local-badge,
+    .font-label,
+    .font-label span,
+    .toolbar-right button,
+    .tool-group label,
+    .paper-caption,
+    .paper-note,
+    .add-block,
+    footer,
+    kbd,
+    #saveStatus
+  ) {
+  color: var(--muted);
+}
+.editor-shell
+  :is(.scene-link.selected, .breadcrumb strong, .sidebar-bottom .sign-out) {
+  color: var(--green);
+}
+.editor-shell :is(.private, .local-badge) {
+  border-color: var(--line);
+}
+dialog {
+  color: var(--ink);
+  background: var(--surface-raised);
+  border-color: var(--line);
+}
+dialog p {
+  color: var(--muted);
+}
+select option {
+  background: var(--surface);
+  color: var(--ink);
+}
+.dashboard .eyebrow {
+  color: var(--muted);
+}
+/* Keep the marketing page's original light visual identity. */
+.landing {
+  --color-ink: #2c2c30;
+  --ink: #2c2c30;
+  --line: #e6e6e9;
+  --color-paper: #fffefb;
+  color-scheme: light;
+  color: #2c2c30;
+}
+@media (max-width: 950px) {
+  .project-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workspace-name {
+    display: none;
+  }
+  .header-actions {
+    gap: 10px;
+  }
+}
+@media (max-width: 650px) {
+  .dashboard-main {
+    padding: 35px 20px;
+  }
+  .workspace-nav {
+    padding: 18px 20px;
+  }
+  .workspace-account {
+    gap: 10px;
+  }
+  .dashboard-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    margin-bottom: 30px;
+  }
+  .project-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .project-filters {
+    flex-wrap: wrap;
+  }
+  .project-filters button {
+    padding: 9px;
+  }
+  .project-grid {
+    grid-template-columns: 1fr;
+  }
+  .workspace-nav .brand {
+    font-size: 18px;
+  }
+  .editor-shell header {
+    padding: 0 14px;
+  }
+  .editor-shell .breadcrumb {
+    display: none;
+  }
+  .editor-shell .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+@media print {
+  .editor-shell .page {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+  .recovery-banner {
+    display: none !important;
+  }
+}

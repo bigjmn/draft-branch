@@ -1,4 +1,6 @@
 import { type Draft, isElementType } from "./types";
+import { toFdx } from "./fdx";
+export type ExportFormat = "fountain" | "json" | "fdx";
 
 /** Accepts the original prototype's saved drafts without changing its storage key. */
 export function parseDraft(raw: string): Draft {
@@ -66,12 +68,21 @@ export function toFountain(draft: Draft): string {
   return output;
 }
 
-export function downloadDraft(draft: Draft, format: "fountain" | "json"): void {
+export function downloadDraft(draft: Draft, format: ExportFormat): void {
   const content =
-    format === "json" ? JSON.stringify(draft, null, 2) : toFountain(draft);
+    format === "json"
+      ? JSON.stringify(draft, null, 2)
+      : format === "fdx"
+        ? toFdx(draft)
+        : toFountain(draft);
   const url = URL.createObjectURL(
     new Blob([content], {
-      type: format === "json" ? "application/json" : "text/plain;charset=utf-8",
+      type:
+        format === "json"
+          ? "application/json"
+          : format === "fdx"
+            ? "application/xml;charset=utf-8"
+            : "text/plain;charset=utf-8",
     }),
   );
   const link = document.createElement("a");

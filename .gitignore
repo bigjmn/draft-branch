@@ -8,3 +8,18 @@ out/
 .sites-runtime/
 firebase-debug.log
 *-debug.log
+
+functions/lib/
+functions/node_modules/
+
+# Local credentials and signing keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+service-account*.json
+serviceAccount*.json
+*-firebase-adminsdk-*.json
+credentials.json
+.firebase/

@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useRef } from "react";
+import type { ExportFormat } from "@/lib/editor/draft";
 export type DialogKind = "export" | "help" | null;
 interface Props {
   kind: DialogKind;
   onClose: () => void;
-  onExport: (format: "fountain" | "json") => void;
+  onExport: (format: ExportFormat) => void;
   onPrint: () => void;
 }
 export function EditorDialog({ kind, onClose, onExport, onPrint }: Props) {
@@ -36,6 +37,12 @@ export function EditorDialog({ kind, onClose, onExport, onPrint }: Props) {
             <small>
               Formatted US Letter pages. Select 100% scale and turn off browser
               headers.
+            </small>
+          </button>
+          <button className="export-option" onClick={() => onExport("fdx")}>
+            Final Draft (.fdx) ↓
+            <small>
+              Editable screenplay with element types and a title page.
             </small>
           </button>
           <button

@@ -27,10 +27,19 @@ export function AuthPanel({
   const { user } = useAuth();
   const [ownMode, setOwnMode] = useState<Mode>("signup");
   const mode = controlledMode ?? ownMode;
+  const [passwordMismatch, setPasswordMismatch] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function run(action: () => Promise<unknown>) {
+    if (!agreed) {
+      setError(
+        "Please agree to the Terms of Use and Privacy Policy to continue.",
+      );
+      return;
+    }
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -46,6 +55,17 @@ export function AuthPanel({
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
+    if (
+      mode === "signup" &&
+      password !== String(form.get("confirmPassword") ?? "")
+    ) {
+      setPasswordMismatch(true);
+      const confirmation =
+        event.currentTarget.elements.namedItem("confirmPassword");
+      if (confirmation instanceof HTMLInputElement) confirmation.focus();
+      return;
+    }
+    setPasswordMismatch(false);
     run(() =>
       mode === "signup"
         ? createUserWithEmailAndPassword(firebaseAuth(), email, password)
@@ -54,6 +74,7 @@ export function AuthPanel({
   }
 
   const switchMode = (next: Mode) => {
+    setPasswordMismatch(false);
     setOwnMode(next);
     onModeChange?.(next);
     setError(null);
@@ -89,10 +110,31 @@ export function AuthPanel({
           : "Sign in to pick up where you left off."}
       </p>
 
+      <div className="auth-agreement">
+        <input
+          id="legal-agreement"
+          type="checkbox"
+          checked={agreed}
+          disabled={disabled}
+          onChange={(event) => setAgreed(event.target.checked)}
+          aria-labelledby="legal-agreement-label"
+        />
+        <label id="legal-agreement-label" htmlFor="legal-agreement">
+          I agree to the{" "}
+          <a href="/terms" target="_blank" rel="noopener noreferrer">
+            Terms of Use
+          </a>{" "}
+          and{" "}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer">
+            Privacy Policy
+          </a>
+        </label>
+      </div>
+
       <button
         type="button"
         className="google-button"
-        disabled={disabled}
+        disabled={disabled || !agreed}
         onClick={() =>
           run(() => signInWithPopup(firebaseAuth(), new GoogleAuthProvider()))
         }
@@ -105,7 +147,11 @@ export function AuthPanel({
         <span>or with email</span>
       </div>
 
-      <form className="auth-form" onSubmit={onSubmit}>
+      <form
+        className="auth-form"
+        onSubmit={onSubmit}
+        onInput={() => setPasswordMismatch(false)}
+      >
         <label>
           Email
           <input
@@ -129,13 +175,44 @@ export function AuthPanel({
             disabled={disabled}
           />
           {mode === "signup" && (
-            <small>At least {MIN_PASSWORD} characters.</small>
+            // <small>At least {MIN_PASSWORD} characters.</small>
+            <small>Same one you use for everything.</small>
           )}
         </label>
+        {mode === "signup" && (
+          <label>
+            Confirm password
+            <input
+              name="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+              disabled={disabled}
+              aria-invalid={passwordMismatch || undefined}
+              aria-describedby={
+                passwordMismatch ? "password-match-error" : undefined
+              }
+            />
+            <small>Run it back now, y'all.</small>
+            {passwordMismatch && (
+              <span
+                id="password-match-error"
+                className="auth-error"
+                role="alert"
+              >
+                Passwords don’t match. Please try again.
+              </span>
+            )}
+          </label>
+        )}
         <p className="auth-error" role="alert">
           {error}
         </p>
-        <button type="submit" className="auth-submit" disabled={disabled}>
+        <button
+          type="submit"
+          className="auth-submit"
+          disabled={disabled || !agreed}
+        >
           {busy
             ? "One moment…"
             : mode === "signup"

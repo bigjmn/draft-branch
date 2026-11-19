@@ -6,7 +6,7 @@
   margin: 0 auto 12px;
   display: flex;
   justify-content: space-between;
-  color: #a0a697;
+  color: #a3a3ad;
   font-size: 8px;
   letter-spacing: 1.3px;
 }
@@ -17,15 +17,17 @@
 }
 .page {
   position: relative;
-  background: var(--color-paper);
+  background: var(--script-paper);
+  color: var(--script-ink);
+  color-scheme: light;
   width: var(--script-page-width);
   min-height: var(--script-page-height);
   padding: var(--script-margin-top) var(--script-margin-right)
     var(--script-margin-bottom) var(--script-margin-left);
   margin-bottom: 24px;
   box-shadow:
-    0 2px 8px #38402b0b,
-    0 0 0 1px #dfe2d8;
+    0 2px 8px #3d3d440b,
+    0 0 0 1px #e0e0e4;
 }
 .page-content {
   width: calc(
@@ -58,7 +60,7 @@
 }
 .block:empty:after {
   content: attr(data-placeholder);
-  color: #b7bcad;
+  color: var(--script-placeholder);
   pointer-events: none;
 }
 .block[data-type="scene"],

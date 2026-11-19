@@ -26,8 +26,8 @@ export function Sidebar({
     (user?.isAnonymous ? "Guest" : "Your workspace");
   return (
     <aside id="sidebar">
-      <a className="brand" href="#canvas">
-        <span className="brand-icon">s.</span> scriptroom
+      <a className="brand" href={user?.isAnonymous ? "/" : "/dashboard"}>
+        <span className="brand-icon">d.</span> DraftBranch
       </a>
       <div className="project">
         <div className="eyebrow">YOUR WORKSPACE</div>
@@ -70,7 +70,7 @@ export function Sidebar({
             {name}
           </span>
           <small>
-            Saved on this device ·{" "}
+            {user?.isAnonymous ? "Guest workspace" : "Your workspace"} ·{" "}
             <button
               className="sign-out"
               onClick={() => signOut(firebaseAuth())}

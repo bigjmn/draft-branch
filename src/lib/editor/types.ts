@@ -77,7 +77,7 @@ export function unwrapParenthetical({
     offset: Math.min(Math.max(offset - open, 0), inner.length),
   };
 }
-export const STORAGE_KEY = "scriptroom.editor.v1";
+export const STORAGE_KEY = "draftbranch.editor.v1";
 export function isElementType(value: unknown): value is ElementType {
   return typeof value === "string" && Object.hasOwn(ELEMENT_LABELS, value);
 }

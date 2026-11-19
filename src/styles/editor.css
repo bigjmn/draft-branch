@@ -4,7 +4,7 @@
 }
 body {
   margin: 0;
-  background: #f5f5f0;
+  background: #f5f5f6;
   color: var(--color-ink);
   font-family: var(--font-ui);
   font-size: 13px;
@@ -25,7 +25,7 @@ button {
 button:focus-visible,
 select:focus-visible,
 a:focus-visible {
-  outline: 2px solid #78936b;
+  outline: 2px solid #14b8a6;
   outline-offset: 3px;
 }
 button {
@@ -36,7 +36,7 @@ button {
   width: var(--sidebar);
   position: fixed;
   inset: 0 auto 0 0;
-  background: #fafbf7;
+  background: #fafafb;
   border-right: 1px solid var(--line);
   padding: 32px 22px;
   display: flex;
@@ -52,8 +52,8 @@ button {
   font-weight: 650;
 }
 .brand-icon {
-  background: #364633;
-  color: #fafcf4;
+  background: #0d9488;
+  color: #fbfbfb;
   font-family: Georgia, serif;
   font-size: 25px;
   width: 32px;
@@ -67,7 +67,7 @@ button {
 .eyebrow {
   font-size: 9px;
   letter-spacing: 1.7px;
-  color: #898d80;
+  color: #8a8a96;
   font-weight: 650;
 }
 .project-name {
@@ -78,21 +78,21 @@ button {
 .private {
   font-size: 8px;
   letter-spacing: 0.7px;
-  border: 1px solid #e0e4d9;
+  border: 1px solid #e2e2e5;
   border-radius: 4px;
   padding: 3px 4px;
   margin-left: 6px;
-  color: #7d8575;
+  color: #81818f;
 }
 .project-detail {
   font-size: 11px;
-  color: #909486;
+  color: #91919e;
   margin-top: 7px;
 }
 .sidebar-label,
 .scene-header {
   font-size: 9px;
-  color: #929688;
+  color: #93939f;
   letter-spacing: 1.3px;
   @apply flex items-center;
   justify-content: space-between;
@@ -110,21 +110,21 @@ button {
   margin: 12px 0 31px;
   border-radius: 5px;
   text-align: left;
-  color: #485742;
+  color: #52525c;
 }
 .document.active {
-  background: #e9eee2;
+  background: #ccfbf1;
 }
 .dot {
   margin-left: auto;
-  background: #738b62;
+  background: #14b8a6;
   width: 5px;
   height: 5px;
   border-radius: 50%;
 }
 .scene-header button {
   font-size: 20px;
-  color: #8a907f;
+  color: #8d8d9a;
 }
 #outline {
   margin-top: 11px;
@@ -137,17 +137,17 @@ button {
   gap: 12px;
   text-align: left;
   padding: 12px 2px;
-  color: #858a7d;
+  color: #878793;
   font-size: 11px;
   line-height: 1.5;
 }
 .scene-link .num {
   font-size: 10px;
-  color: #a9ae9e;
+  color: #ababb5;
   padding-top: 1px;
 }
 .scene-link.selected {
-  color: #34482c;
+  color: #0f766e;
 }
 .scene-link strong {
   font-size: 10px;
@@ -157,7 +157,7 @@ button {
 }
 .scene-link small {
   font-size: 10px;
-  color: #a1a693;
+  color: #a3a3ad;
 }
 .sidebar-bottom {
   margin-top: auto;
@@ -169,25 +169,25 @@ button {
   font-size: 11px;
 }
 .avatar {
-  background: #e4e9dc;
+  background: #e7e7ea;
   border-radius: 50%;
   width: 30px;
   height: 30px;
   display: grid;
   place-items: center;
-  color: #627053;
+  color: #6a6a78;
 }
 .sidebar-bottom small {
   display: block;
-  color: #969c8a;
+  color: #9999a4;
   font-size: 10px;
   margin-top: 5px;
 }
 .sidebar-bottom button {
   margin-left: auto;
-  border: 1px solid #d7ddce;
+  border: 1px solid #dadadf;
   border-radius: 50%;
-  color: #929a86;
+  color: #9696a2;
 }
 .avatar {
   flex: none;
@@ -207,7 +207,7 @@ button {
   border-radius: 0;
   padding: 0;
   font-size: 10px;
-  color: #69795e;
+  color: #737382;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -219,19 +219,19 @@ header {
   @apply flex items-center justify-between;
   padding: 0 35px;
   border-bottom: 1px solid var(--line);
-  background: #fdfdf9;
+  background: #fdfdfd;
 }
 .breadcrumb {
   font-size: 11px;
-  color: #92978b;
+  color: #94949f;
 }
 .breadcrumb span {
   margin: 0 13px;
-  color: #bdc2b5;
+  color: #c0c0c7;
 }
 .breadcrumb strong {
   font-weight: 500;
-  color: #50584a;
+  color: #55555f;
 }
 .header-actions {
   @apply flex items-center;
@@ -239,18 +239,18 @@ header {
 }
 #saveStatus {
   font-size: 10px;
-  color: #919889;
+  color: #9595a1;
 }
 i {
   display: inline-block;
   border-radius: 50%;
-  background: #819571;
+  background: #8e8e9b;
   width: 5px;
   height: 5px;
   margin-right: 6px;
 }
 .button {
-  background: #46593e;
+  background: #0d9488;
   color: white;
   border-radius: 5px;
   padding: 9px 14px;
@@ -262,7 +262,7 @@ i {
 .document-header {
   padding: 32px 38px 25px;
   @apply flex items-center justify-between;
-  background: #fdfdf9;
+  background: #fdfdfd;
 }
 h1 {
   font-family: Georgia, "Times New Roman", serif;
@@ -275,12 +275,12 @@ h1 {
 }
 .document-header p {
   font-size: 11px;
-  color: #96998f;
+  color: #9797a0;
   margin: 0;
 }
 .draft-label {
   font-size: 11px;
-  color: #717c67;
+  color: #777786;
   @apply flex items-center;
   gap: 9px;
 }
@@ -290,14 +290,14 @@ h1 {
 .local-badge {
   font-size: 8px;
   letter-spacing: 1px;
-  border: 1px solid #dce2d4;
+  border: 1px solid #e0e0e3;
   border-radius: 3px;
   padding: 4px;
-  color: #919c86;
+  color: #9797a3;
 }
 .toolbar {
   height: 48px;
-  background: #fdfdf9;
+  background: #fdfdfd;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   @apply flex items-center;
@@ -315,7 +315,7 @@ h1 {
 .tool-group label {
   font-size: 8px;
   letter-spacing: 1.2px;
-  color: #a0a598;
+  color: #a2a2ad;
 }
 select {
   background: transparent;
@@ -332,12 +332,12 @@ select {
 .font-label {
   font-family: Courier, "Courier New", monospace;
   font-size: 12px;
-  color: #666f5f;
+  color: #6b6b79;
 }
 .font-label span {
   font-family: Arial, sans-serif;
   font-size: 10px;
-  color: #a4aa9b;
+  color: #a7a7b1;
   margin-left: 12px;
 }
 .toolbar-right {
@@ -348,7 +348,7 @@ select {
 }
 .toolbar-right button {
   font-size: 12px;
-  color: #79826f;
+  color: #7e7e8c;
 }
 .toolbar-right button span {
   font-size: 10px;
@@ -363,7 +363,7 @@ select {
 .add-block {
   display: block;
   margin: 18px auto;
-  color: #7d8971;
+  color: #848492;
   font-size: 11px;
   padding: 10px;
 }
@@ -372,7 +372,7 @@ select {
   font-family: Georgia, serif;
   font-size: 12px;
   font-style: italic;
-  color: #a4ab9a;
+  color: #a8a8b2;
   margin: 20px;
 }
 footer {
@@ -381,14 +381,14 @@ footer {
   bottom: 0;
   left: var(--sidebar);
   right: 0;
-  background: #fafbf7;
+  background: #fafafb;
   border-top: 1px solid var(--line);
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0 25px;
   font-size: 9px;
-  color: #8b9480;
+  color: #90909c;
   z-index: 5;
 }
 footer b {
@@ -397,18 +397,18 @@ footer b {
 }
 kbd {
   font-family: inherit;
-  color: #67765b;
+  color: #70707e;
 }
 dialog {
-  border: 1px solid #e0e6d8;
+  border: 1px solid #e4e4e7;
   border-radius: 12px;
   width: 420px;
   padding: 30px;
   color: var(--color-ink);
-  box-shadow: 0 20px 100px #26311f30;
+  box-shadow: 0 20px 100px #2d2d3330;
 }
 dialog::backdrop {
-  background: #25351f44;
+  background: #30303644;
   backdrop-filter: blur(3px);
 }
 dialog h2 {
@@ -418,7 +418,7 @@ dialog h2 {
   margin: 0 0 12px;
 }
 dialog p {
-  color: #869079;
+  color: #8b8b99;
   font-size: 12px;
   line-height: 1.7;
 }
@@ -427,7 +427,7 @@ dialog p {
   right: 12px;
   top: 10px;
   font-size: 24px;
-  color: #87947b;
+  color: #8f8f9b;
 }
 .export-option {
   display: block;
@@ -441,7 +441,7 @@ dialog p {
 .export-option small {
   display: block;
   margin-top: 6px;
-  color: #8b9580;
+  color: #91919d;
 }
 .shortcut-row {
   display: flex;
@@ -454,7 +454,7 @@ dialog p {
   bottom: 55px;
   left: 50%;
   transform: translateX(-50%);
-  background: #36482f;
+  background: #42424b;
   color: white;
   border-radius: 7px;
   padding: 12px 20px;

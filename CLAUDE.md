@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
-Scriptroom is a browser-local screenplay editor built with Next.js 16 (App Router), React 19, TypeScript (strict), and Tailwind CSS v4. Node 20.9+ is required (Node 24 is recommended). Next.js 16 differs from older versions, so check `node_modules/next/dist/docs/` before using Next APIs.
+DraftBranch is a browser-local screenplay editor built with Next.js 16 (App Router), React 19, TypeScript (strict), and Tailwind CSS v4. Node 20.9+ is required (Node 24 is recommended). Next.js 16 differs from older versions, so check `node_modules/next/dist/docs/` before using Next APIs.
 
 ## Commands
 
@@ -30,7 +30,7 @@ Validation before finishing a change: `npm run typecheck && npm test && npm run 
 **Pagination** reads page dimensions from computed CSS (`screenplay.css`/`theme.css`), not from constants in code. It moves whole blocks between pages, puts no gap between dialogue and parenthetical blocks, and restores the selection after moving DOM nodes. Elements that split across pages and dialogue continuations are not implemented yet.
 
 **Persistence and compatibility:**
-- Drafts are stored in localStorage under `STORAGE_KEY = "scriptroom.editor.v1"`. Don't change this key or the stored `{ title, blocks: [{ id, type, text }] }` format. It must stay compatible with drafts saved by the original prototype, and `tests/draft.test.ts` checks that.
+- Drafts are stored in localStorage under `STORAGE_KEY = "draftbranch.editor.v1"`. Legacy keys are read through `src/lib/storage.ts`. Preserve the stored `{ title, blocks: [{ id, type, text }] }` format. It must stay compatible with drafts saved by the original prototype, and `tests/draft.test.ts` checks that.
 - `parseDraft` rejects malformed drafts, empty drafts, unknown element types, and duplicate IDs instead of dropping data. If loading fails, `useDraft` loads the sample draft and shows a recovery banner. Note that the first edit after that still triggers a save that overwrites the unreadable stored draft, because nothing blocks it.
 - Element types come from `ELEMENT_LABELS` in `src/lib/editor/types.ts`. Keyboard flow lives in the same file, in `NEXT_ELEMENT` (Enter) and `TAB_CYCLES` (Tab). When adding a type, update those, plus `toFountain` and the CSS for `[data-type=...]`. The README's "Using the editor" tables document the keyboard flow, so keep them in sync.
 - Export (`draft.ts`) writes Fountain using forced-element prefixes (`.`, `@`, `>`, `!`) or JSON. PDF output uses the browser print dialog.

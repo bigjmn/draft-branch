@@ -1,11 +1,42 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Profiles are created by the onUserCreated Cloud Function (Admin SDK),
-    // which bypasses these rules. Clients can only read their own.
+    function signedIn() { return request.auth != null; }
+    function member(projectId) {
+      return signedIn() && exists(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid));
+    }
+    function owner(projectId) {
+      return member(projectId) && get(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid)).data.role == 'owner';
+    }
+    // All mutations go through authenticated callable APIs / trusted workers.
     match /users/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
+      allow read: if signedIn() && request.auth.uid == uid;
       allow write: if false;
+      match /projects/{projectId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow write: if false;
+      }
+    }
+    match /projects/{projectId} {
+      allow read: if member(projectId);
+      allow write: if false;
+      match /members/{uid} { allow read: if member(projectId); allow write: if false; }
+      match /branches/{branchId} { allow read: if member(projectId); allow write: if false; }
+      match /commits/{commitId} { allow read: if member(projectId); allow write: if false; }
+      match /workingDrafts/{uid}/branches/{branchId} {
+        allow read: if member(projectId) && request.auth.uid == uid;
+        allow write: if false;
+      }
+      match /uploads/{uploadId} {
+        allow read: if member(projectId) && resource.data.actorUid == request.auth.uid;
+        allow write: if false;
+      }
+      match /operations/{operationId} {
+        allow read: if member(projectId) && (resource.data.actor.uid == request.auth.uid || owner(projectId));
+        allow write: if false;
+      }
+      match /invitations/{invitationId} { allow read: if owner(projectId); allow write: if false; }
+      match /requests/{requestId} { allow read, write: if false; }
     }
   }
 }

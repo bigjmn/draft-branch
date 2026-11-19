@@ -26,7 +26,7 @@ export function Landing() {
   // editor. Guests stay on the landing page so they can come back to it.
   useEffect(() => {
     if (user && !user.isAnonymous && !tryingRef.current) {
-      router.replace("/editor");
+      router.replace("/dashboard");
     }
   }, [user, router]);
 
@@ -61,7 +61,7 @@ export function Landing() {
     <div className="landing">
       <nav className="landing-nav" aria-label="Main">
         <a className="brand" href="#top">
-          <span className="brand-icon">s.</span> scriptroom
+          <span className="brand-icon">d.</span> DraftBranch
         </a>
         <div className="landing-links">
           <a className="nav-section" href="#features">
@@ -91,13 +91,19 @@ export function Landing() {
         <section className="hero">
           <div className="hero-grid">
             <div className="hero-copy">
-              <h1>
-                Write the draft.{" "}
-                <span className="underlined">
-                  Branch the story.
-                  <Squiggle />
-                </span>
-              </h1>
+              <div className="hero-statements">
+                <p className="hero-presenter">J Nicks Productions proudly presents...</p>
+                <h1 className="hero-title">DraftBranch</h1>
+                
+                <h2>
+                  <em>Industry-standard</em> screenwriting software with <em>flexible, powerful</em> version control. 
+          </h2>
+                {/* <h1 className="hero-statement">
+                  Industry-standard screenwriting software.
+                </h1>
+                <p className="hero-statement">Powerful version control.</p>
+                <p className="hero-statement">Completely free.</p> */}
+              </div>
               <p className="hero-lede">
                 A clean, properly formatted screenplay editor, built so writing
                 partners can try alternate versions, review each other&apos;s
@@ -113,7 +119,7 @@ export function Landing() {
               </button>
               {tryErrorFor(["nav", "hero"])}
               <p className="hero-note">
-                Sign up with email or Google. Your first draft opens in seconds.
+                Test it out first before wasting ten seconds and zero dollars on making an account.
               </p>
             </div>
             <div id="account" className="hero-auth">
@@ -121,6 +127,22 @@ export function Landing() {
             </div>
           </div>
           <EditorMock />
+        </section>
+
+        <section id="vision" className="vision">
+          <div className="eyebrow">The Big Idea</div>
+          <h2>
+            Why <em>DraftBranch</em> exists
+          </h2>
+          <p>
+            Version control is essential to both engineers and screenwriters: both need to preserve their work, explore alternatives, collaborate, and understand how a project evolved. Engineers use Git - a reliable, open-source tool to manage changes without losing earlier work or overwriting someone else’s contributions. Screenwriters face many of the same challenges, but often manage them through numbered files, emailed drafts, and manually reconciled notes. 
+            <br/>
+            <br/>
+            We dropped the ball on this one. 
+            <br/>
+            <br/>
+            This platform brings Git’s infrastructure into a writing environment designed for scripts, giving writers the freedom to try a different ending, develop scenes in parallel, and bring the best ideas together while keeping a clear history of every revision.
+          </p>
         </section>
 
         <section id="features" className="features">
@@ -228,7 +250,7 @@ export function Landing() {
 
       <div className="landing-footer">
         <span className="brand">
-          <span className="brand-icon">s.</span> scriptroom
+          <span className="brand-icon">d.</span> DraftBranch
         </span>
         <span>A quiet writing room for screenwriters.</span>
       </div>
@@ -326,19 +348,6 @@ function Step({
   );
 }
 
-function Squiggle() {
-  return (
-    <svg
-      className="squiggle"
-      viewBox="0 0 300 18"
-      preserveAspectRatio="none"
-      aria-hidden="true"
-    >
-      <path d="M4 12 C 60 4, 110 4, 150 9 S 230 16, 296 6" />
-    </svg>
-  );
-}
-
 /** Decorative preview of the editor, built from markup rather than an image. */
 function EditorMock() {
   return (
@@ -348,7 +357,7 @@ function EditorMock() {
           <i />
           <i />
           <i />
-          <span>The Last Light / Screenplay</span>
+          <span>An Elephant Never Forgives / Screenplay</span>
         </div>
         <div className="mock-body">
           <div className="mock-side">
@@ -365,10 +374,11 @@ function EditorMock() {
                 station wagon hugs the cliffs.
               </p>
               <p className="c">BEN</p>
-              <p className="d">You know there&apos;s a faster way.</p>
+              <p className="d">Is any of this real? What if we exist only in this one tiny interaction, as a lazy showcase of functionality?</p>
+              <p>A beat.</p>
               <p className="c">ELLA</p>
-              <p className="p">(a beat)</p>
-              <p className="d">That&apos;s not why we&apos;re here.</p>
+              <p className="p">(concerned)</p>
+              <p className="d">Have you been drinking again?</p>
             </div>
           </div>
         </div>
@@ -380,10 +390,10 @@ function EditorMock() {
 function WriteVisual() {
   return (
     <div className="mini-page">
-      <p>INT. LIGHTHOUSE - NIGHT</p>
-      <p className="c">ELLA</p>
+      <p>INT. CEMETERY - DAY</p>
+      <p className="c">CLOWN</p>
       <p className="d">
-        You&apos;re late.
+        Okay I'm charging double my usual rate guys... I don't like this at all.
         <span className="caret" />
       </p>
     </div>
@@ -411,10 +421,14 @@ function BranchVisual() {
 function ReviewVisual() {
   return (
     <div className="diff">
-      <p className="ctx">ELLA</p>
-      <p className="del">− I know.</p>
-      <p className="add">+ I know. I always have.</p>
-      <p className="note">Ben: love this, keep it.</p>
+      <p className="ctx">O&apos;HARA</p>
+      <p className="unchanged">
+        Rhett, if you go, where shall I go? What shall I do?
+      </p>
+      <p className="ctx">BUTLER</p>
+      <p className="del">− Do I look like I give a shit?</p>
+      <p className="add">+ Frankly, my dear, I don't give a damn.</p>
+      <p className="note">Ben: Still savage, but classy. Love it.</p>
     </div>
   );
 }

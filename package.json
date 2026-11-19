@@ -1,5 +1,5 @@
 {
-  "name": "scriptroom",
+  "name": "draftbranch",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,19 +8,24 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "format": "prettier --write src tests functions/src functions/*.json *.json *.mjs *.ts README.md"
+    "format": "prettier --write src tests functions/src functions/*.json *.json *.mjs *.ts README.md",
+    "test:backend": "npm --prefix functions run build && firebase emulators:exec --project demo-draftbranch --only firestore,storage \"npm --prefix functions test && tsx --test integration/*.test.ts\"",
+    "test:backend:smoke": "npm --prefix functions run build && firebase emulators:exec --project demo-draftbranch --only auth,firestore,storage,functions \"tsx integration/callable-smoke.ts\""
   },
   "dependencies": {
     "firebase": "^13.3.0",
     "next": "^16.4.6",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "firebase-tools": "^15.36.0",
     "postcss": "^8.0.0",
     "prettier": "^3.0.0",
     "tailwindcss": "^4.0.0",
