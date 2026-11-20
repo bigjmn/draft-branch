@@ -3,6 +3,8 @@ import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  readSharedProject,
+  readSharedHistory,
   createBranch,
   commitDraft,
   loadBranchHistory,
@@ -15,7 +17,10 @@ import {
 import { draftChanges } from "@/lib/projects/changes";
 import { ELEMENT_LABELS, type Draft } from "@/lib/editor/types";
 import type { EditorProject } from "./use-project-draft";
+import type { ReaderOptions } from "./screenplay-editor";
 interface Props {
+  readOnly?: boolean;
+  reader?: ReaderOptions;
   project?: EditorProject;
   draft: Draft;
   saved: boolean;
@@ -38,6 +43,8 @@ export function VersionControl(props: Props) {
   );
 }
 function VersionPanel({
+  readOnly = false,
+  reader,
   project,
   draft,
   saved,
@@ -47,7 +54,7 @@ function VersionPanel({
 }: Props & { close: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [view, setView] = useState("working");
+  const [view, setView] = useState(readOnly ? "history" : "working");
   const [browse, setBrowse] = useState(project?.branch || "main");
   const [history, setHistory] = useState<RevisionSummary[] | null>(null);
   const [selected, setSelected] = useState<RevisionSummary | null>(null);
@@ -74,13 +81,23 @@ function VersionPanel({
       stop.current?.();
     };
   }, []);
+  const access = reader?.access;
+  const readRevision = (projectId: string, commitId: string) =>
+    access
+      ? readSharedProject({ ...access, commitId })
+      : readProjectRevision(projectId, commitId);
+  useEffect(() => {
+    if (reader?.branches) setBranches(reader.branches);
+  }, [reader?.branches]);
   useEffect(() => {
     if (!project) return;
     let active = true;
-    const unsub = watchBranches(project.id, setBranches, () =>
-      setError("Couldn’t load branches. Check your connection."),
-    );
-    readProjectRevision(project.id, project.initial.baseCommit)
+    const unsub = access
+      ? () => {}
+      : watchBranches(project.id, setBranches, () =>
+          setError("Couldn’t load branches. Check your connection."),
+        );
+    readRevision(project.id, project.initial.baseCommit)
       .then((r) => {
         if (active) setBase(r.draft);
       })
@@ -99,7 +116,10 @@ function VersionPanel({
     if (!project || !browsed) return;
     let active = true;
     setHistory(null);
-    loadBranchHistory(project.id, browsed.head)
+    (access
+      ? readSharedHistory(access, browsed.head)
+      : loadBranchHistory(project.id, browsed.head)
+    )
       .then((rows) => {
         if (active) setHistory(rows);
       })
@@ -115,9 +135,9 @@ function VersionPanel({
     let active = true;
     setComparison(null);
     Promise.all([
-      readProjectRevision(project.id, selected.oid),
+      readRevision(project.id, selected.oid),
       selected.parent[0]
-        ? readProjectRevision(project.id, selected.parent[0])
+        ? readRevision(project.id, selected.parent[0])
         : Promise.resolve({ draft: { title: "", blocks: [] } as Draft }),
     ])
       .then(([after, before]) => {
@@ -141,8 +161,9 @@ function VersionPanel({
           : null,
     [view, base, draft, comparison],
   );
-  const ready = saved && !!canPublish?.();
+  const ready = readOnly || (saved && !!canPublish?.());
   const canCommit =
+    !readOnly &&
     !!project &&
     ready &&
     !!base &&
@@ -152,7 +173,14 @@ function VersionPanel({
     (!current.protected || project.role === "owner") &&
     !busy;
   function navigate(name: string) {
-    if (!ready || busy || !canPublish?.()) return;
+    if (busy) return;
+    if (readOnly) {
+      if (reader?.onBranchChange) {
+        reader.onBranchChange(name);
+        close();
+        return;
+      }
+    } else if (!ready || !canPublish?.()) return;
     window.location.assign(
       `/editor?project=${encodeURIComponent(project!.id)}&branch=${encodeURIComponent(name)}`,
     );
@@ -221,7 +249,14 @@ function VersionPanel({
     }
   }
   async function branch() {
-    if (!project || !browsed || !ready || lock.current || !canPublish?.())
+    if (
+      readOnly ||
+      !project ||
+      !browsed ||
+      !ready ||
+      lock.current ||
+      !canPublish?.()
+    )
       return;
     lock.current = true;
     setBusy(true);
@@ -288,16 +323,23 @@ function VersionPanel({
               <small>checked out</small>
             </span>
             <button
-              disabled={!ready || busy}
+              disabled={readOnly || !ready || busy}
+              title={
+                readOnly ? "Read-only access cannot create branches" : undefined
+              }
               onClick={() => setCreating(!creating)}
             >
               ⑂ New branch
             </button>
             <span className="vc-sync">
-              {saved ? "Cloud draft saved" : "Waiting for cloud save…"}
+              {readOnly
+                ? "Read-only access"
+                : saved
+                  ? "Cloud draft saved"
+                  : "Waiting for cloud save…"}
             </span>
           </div>
-          {creating && (
+          {creating && !readOnly && (
             <form
               className="vc-branch-form"
               onSubmit={(e) => {
@@ -345,6 +387,7 @@ function VersionPanel({
             <nav className="vc-sidebar" aria-label="Version navigation">
               <div className="eyebrow">WORKSPACE</div>
               <button
+                disabled={readOnly}
                 aria-pressed={view === "working"}
                 onClick={() => {
                   setView("working");
@@ -385,8 +428,9 @@ function VersionPanel({
                 </button>
               ))}
               <p className="vc-sidebar-note">
-                Commits publish directly to this private project. Merging
-                branches is not available yet.
+                {readOnly
+                  ? "Browse every committed branch and revision. Editing, creating branches, and committing require Editor access."
+                  : "Commits publish directly to this private project. Merging branches is not available yet."}
               </p>
             </nav>
             <section className="vc-content">
@@ -431,7 +475,7 @@ function VersionPanel({
                       placeholder="What changed in this revision?"
                       maxLength={2000}
                       value={message}
-                      disabled={busy}
+                      disabled={busy || readOnly}
                       onChange={(e) => setMessage(e.target.value)}
                     />
                     <div>

@@ -22,8 +22,61 @@ import { useProjectDraft, type EditorProject } from "./use-project-draft";
 import { ThemeToggle } from "@/components/theme/theme-provider";
 import Link from "next/link";
 import { ShareProject } from "@/components/projects/share-project";
+import { useAuth } from "@/components/auth/auth-provider";
+import { AuthPanel } from "@/components/auth/auth-panel";
+import {
+  watchBranches,
+  type InvitationAccess,
+  type Branch,
+} from "@/lib/projects/client";
 import { VersionControl } from "./version-control";
 
+export interface ReaderOptions {
+  access?: InvitationAccess;
+  branches?: Branch[];
+  onBranchChange?: (branch: string) => void;
+  onContribute?: () => void;
+}
+export function ReadOnlyEditor({
+  project,
+  reader = {},
+}: {
+  project: EditorProject;
+  reader?: ReaderOptions;
+}) {
+  const [branches, setBranches] = useState<Branch[]>([]);
+  useEffect(() => {
+    if (reader.access) return;
+    return watchBranches(project.id, setBranches, () => setBranches([]));
+  }, [project.id, reader.access]);
+  const controls = {
+    ...reader,
+    branches: reader.branches ?? branches,
+    onBranchChange:
+      reader.onBranchChange ??
+      ((name: string) =>
+        window.location.assign(
+          `/editor?project=${encodeURIComponent(project.id)}&branch=${encodeURIComponent(name)}`,
+        )),
+  };
+  // Do not mount the autosave hook or restore private local drafts for readers.
+  const state = {
+    draft: project.initial.draft,
+    status: "saved" as const,
+    recoveryError: null,
+    update: () => {},
+    save: () => false,
+  };
+  return (
+    <EditorView
+      state={state}
+      cloud
+      project={project}
+      readOnly
+      reader={controls}
+    />
+  );
+}
 export function ScreenplayEditor({ project }: { project?: EditorProject }) {
   return project ? <CloudEditor project={project} /> : <LocalEditor />;
 }
@@ -49,14 +102,27 @@ function EditorView({
   project,
   getVersion,
   canPublish,
+  readOnly = false,
+  reader,
 }: {
-  state: ReturnType<typeof useDraft>;
+  state: Pick<
+    ReturnType<typeof useDraft>,
+    "draft" | "status" | "recoveryError" | "update" | "save"
+  >;
+  readOnly?: boolean;
+  reader?: ReaderOptions;
   cloud?: boolean;
   project?: EditorProject;
   getVersion?: () => number;
   canPublish?: () => boolean;
 }) {
   const { draft, status, recoveryError, update, save } = state;
+  const { user } = useAuth();
+  const [signup, setSignup] = useState(false);
+  const signupDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (signup) signupDialog.current?.showModal();
+  }, [signup]);
   const canvas = useRef<CanvasHandle>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const [layout, setLayout] = useState<EditorLayout>({ pages: 1, scenes: [] });
@@ -85,6 +151,7 @@ function EditorView({
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "s") {
         event.preventDefault();
+        if (readOnly) return;
         setToast(
           save()
             ? cloud
@@ -97,7 +164,7 @@ function EditorView({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [save, cloud]);
+  }, [save, cloud, readOnly]);
 
   const onSelection = useCallback((id: string, next: ElementType) => {
     setSelectedId(id);
@@ -125,6 +192,7 @@ function EditorView({
   return (
     <div className={`editor-shell${focus ? " focus" : ""}`} data-zoom={zoom}>
       <Sidebar
+        readOnly={readOnly}
         title={draft.title}
         scenes={layout.scenes}
         selectedId={selectedId}
@@ -138,16 +206,26 @@ function EditorView({
             {draft.title} <span>/</span> <strong>Screenplay</strong>
           </div>
           <div className="header-actions">
-            {cloud && (
-              <Link className="dashboard-back" href="/dashboard">
-                ← Projects
-              </Link>
-            )}
-            {project?.role === "owner" && (
+            {cloud &&
+              (user && !user.isAnonymous ? (
+                <Link className="dashboard-back" href="/dashboard">
+                  ← Dashboard
+                </Link>
+              ) : (
+                <button
+                  className="dashboard-back"
+                  onClick={() => setSignup(true)}
+                >
+                  ← Dashboard
+                </button>
+              ))}
+            {!readOnly && project?.role === "owner" && (
               <ShareProject projectId={project.id} uid={project.uid} />
             )}
             <VersionControl
               project={project}
+              readOnly={readOnly}
+              reader={reader}
               draft={draft}
               saved={status === "saved"}
               getVersion={getVersion}
@@ -155,14 +233,16 @@ function EditorView({
             />
             <ThemeToggle />
             <span id="saveStatus" role="status">
-              {status === "saved" && <i />}
-              {status === "saving"
-                ? "Saving…"
-                : status === "error"
-                  ? "Not saved — export a copy"
-                  : cloud
-                    ? "Saved to cloud"
-                    : "Saved locally"}
+              {!readOnly && status === "saved" && <i />}
+              {readOnly
+                ? "Read only"
+                : status === "saving"
+                  ? "Saving…"
+                  : status === "error"
+                    ? "Not saved — export a copy"
+                    : cloud
+                      ? "Saved to cloud"
+                      : "Saved locally"}
             </span>
             <button className="button" onClick={() => setDialog("export")}>
               Export <span>↗</span>
@@ -171,14 +251,17 @@ function EditorView({
         </header>
         <section className="document-header">
           <div>
-            <div className="eyebrow">WORKING DRAFT</div>
+            <div className="eyebrow">
+              {readOnly ? "COMMITTED DRAFT" : "WORKING DRAFT"}
+            </div>
             <h1
               ref={title}
-              contentEditable
+              contentEditable={!readOnly}
               suppressContentEditableWarning
               spellCheck={false}
               aria-label="Screenplay title"
               onInput={(event) =>
+                !readOnly &&
                 update({
                   ...draft,
                   title: event.currentTarget.textContent ?? "",
@@ -191,6 +274,7 @@ function EditorView({
                 }
               }}
               onBlur={(event) => {
+                if (readOnly) return;
                 const text =
                   event.currentTarget.textContent?.trim() ||
                   "Untitled screenplay";
@@ -202,11 +286,29 @@ function EditorView({
           </div>
           <div className="draft-label">
             <span className="branch-symbol">⑂</span>{" "}
-            {project?.branch || "Main draft"}{" "}
+            {readOnly && reader?.branches?.length ? (
+              <select
+                aria-label="Current branch"
+                className="reader-branch-select"
+                value={project?.branch}
+                onChange={(event) =>
+                  reader.onBranchChange?.(event.target.value)
+                }
+              >
+                {reader.branches.map((branch) => (
+                  <option key={branch.name} value={branch.name}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              project?.branch || "Main draft"
+            )}{" "}
             <span className="local-badge">{cloud ? "PRIVATE" : "LOCAL"}</span>
           </div>
         </section>
         <Toolbar
+          readOnly={readOnly}
           type={type}
           zoom={zoom}
           focus={focus}
@@ -225,18 +327,21 @@ function EditorView({
             <span>US LETTER · 8.5 × 11 IN</span>
           </div>
           <EditorCanvas
+            readOnly={readOnly}
             ref={canvas}
             initialBlocks={draft.blocks}
             onChange={onBlocks}
             onSelection={onSelection}
             onLayout={setLayout}
           />
-          <button
-            className="add-block"
-            onClick={() => canvas.current?.append("action")}
-          >
-            + Add a new element
-          </button>
+          {!readOnly && (
+            <button
+              className="add-block"
+              onClick={() => canvas.current?.append("action")}
+            >
+              + Add a new element
+            </button>
+          )}
           <div className="paper-note">
             A place for the story. Everything else can wait.
           </div>
@@ -249,10 +354,49 @@ function EditorView({
           </span>
           <span>{ELEMENT_LABELS[type]}</span>
           <span>
-            <kbd>Tab</kbd> Change element <b>·</b> <kbd>Enter</kbd> Next element
+            {readOnly ? (
+              "Read-only access · All branches"
+            ) : (
+              <>
+                <kbd>Tab</kbd> Change element <b>·</b> <kbd>Enter</kbd> Next
+                element
+              </>
+            )}
           </span>
         </footer>
       </div>
+      {signup && (
+        <dialog
+          ref={signupDialog}
+          className="reader-signup"
+          onCancel={() => setSignup(false)}
+        >
+          <button
+            className="reader-signup-close"
+            aria-label="Close sign up"
+            onClick={() => setSignup(false)}
+          >
+            ×
+          </button>
+          <h2>Sign up to manage projects</h2>
+          <p>
+            Create an account to keep projects in your dashboard and start your
+            own screenplays.
+          </p>
+          {user && !user.isAnonymous ? (
+            <Link className="primary-action" href="/dashboard">
+              Go to dashboard
+            </Link>
+          ) : (
+            <AuthPanel />
+          )}
+        </dialog>
+      )}
+      {readOnly && reader?.onContribute && (
+        <button className="reader-contribute" onClick={reader.onContribute}>
+          Invitation & account options
+        </button>
+      )}
       <EditorDialog
         kind={dialog}
         onClose={() => setDialog(null)}

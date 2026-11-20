@@ -584,7 +584,7 @@ export class ProjectService {
       fail("permission-denied", "Invitation link is invalid or unavailable.");
   }
 
-  /** Capability access only: never returns a working draft, history, or arbitrary branch. */
+  /** Invitation capability: committed project tree only, never private working drafts. */
   async sharedInvitation(input: unknown, includeDraft = false) {
     const data = record(input),
       pid = id(data.projectId),
@@ -629,16 +629,57 @@ export class ProjectService {
       });
     const metadata = await check();
     if (!includeDraft) return metadata;
-    const main = await this.branch(pid, "main").get();
+    const branchName = branchId(data.branchId ?? "main");
+    const branch = await this.branch(pid, branchName).get();
+    if (!branch.exists) fail("not-found", "Branch not found.");
+    const commitId =
+      data.commitId === undefined ? branch.data()!.head : oid(data.commitId);
+    // Only committed objects in this project are readable. Never accept storage paths.
     const revision = await this.project(pid)
       .collection("commits")
-      .doc(main.data()!.head)
+      .doc(commitId)
       .get();
-    if (!revision.exists)
-      fail("not-found", "Published screenplay unavailable.");
+    if (!revision.exists) fail("not-found", "Revision not found.");
+    if (data.history === true) {
+      const history = [];
+      const seen = new Set<string>();
+      let cursor: string | undefined = commitId;
+      while (cursor && history.length < 50 && !seen.has(cursor)) {
+        seen.add(cursor);
+        const item = await this.project(pid)
+          .collection("commits")
+          .doc(cursor)
+          .get();
+        if (!item.exists) fail("not-found", "Revision not found.");
+        const row = item.data()!;
+        history.push({
+          oid: cursor,
+          message: row.message,
+          actorUid: row.actorUid,
+          timestamp: row.timestamp,
+          parent: row.parent,
+        });
+        cursor = row.parent[0];
+      }
+      await check();
+      return { ...metadata, history };
+    }
     const draft = await this.git.readSnapshot(pid, revision.data()!.blob);
+    const branches = (
+      await this.project(pid).collection("branches").get()
+    ).docs.map((item) => {
+      const row = item.data();
+      return { name: row.name, head: row.head, protected: row.protected };
+    });
     await check();
-    return { ...metadata, draft, commitId: main.data()!.head as string };
+    return {
+      ...metadata,
+      draft,
+      commitId,
+      branchId: branchName,
+      branches,
+      parent: revision.data()!.parent as string[],
+    };
   }
 
   async acceptInvitation(actor: Actor, input: unknown) {

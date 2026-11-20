@@ -4,6 +4,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import type { Scene } from "@/lib/editor/types";
 import { firebaseAuth } from "@/lib/firebase/client";
 interface Props {
+  readOnly?: boolean;
   title: string;
   scenes: Scene[];
   selectedId: string | null;
@@ -12,6 +13,7 @@ interface Props {
   onHelp: () => void;
 }
 export function Sidebar({
+  readOnly = false,
   title,
   scenes,
   selectedId,
@@ -20,13 +22,13 @@ export function Sidebar({
   onHelp,
 }: Props) {
   const { user } = useAuth();
-  const name =
-    user?.displayName ||
-    user?.email ||
-    (user?.isAnonymous ? "Guest" : "Your workspace");
+  const name = user?.displayName || user?.email || "Guest";
   return (
     <aside id="sidebar">
-      <a className="brand" href={user?.isAnonymous ? "/" : "/dashboard"}>
+      <a
+        className="brand"
+        href={!user || user.isAnonymous ? "/" : "/dashboard"}
+      >
         <span className="brand-icon">d.</span> DraftBranch
       </a>
       <div className="project">
@@ -44,7 +46,12 @@ export function Sidebar({
       </a>
       <div className="scene-header">
         <span>SCENE OUTLINE</span>
-        <button onClick={onAdd} title="Add a scene" aria-label="Add a scene">
+        <button
+          disabled={readOnly}
+          onClick={onAdd}
+          title="Add a scene"
+          aria-label="Add a scene"
+        >
           +
         </button>
       </div>
@@ -70,13 +77,19 @@ export function Sidebar({
             {name}
           </span>
           <small>
-            {user?.isAnonymous ? "Guest workspace" : "Your workspace"} ·{" "}
-            <button
-              className="sign-out"
-              onClick={() => signOut(firebaseAuth())}
-            >
-              Sign out
-            </button>
+            {!user || user.isAnonymous ? "Guest workspace" : "Your workspace"}
+            {user && (
+              <>
+                {" "}
+                ·{" "}
+                <button
+                  className="sign-out"
+                  onClick={() => signOut(firebaseAuth())}
+                >
+                  Sign out
+                </button>
+              </>
+            )}
           </small>
         </div>
         <button

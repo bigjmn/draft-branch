@@ -479,7 +479,7 @@ test(
 );
 
 test(
-  "guest capability reads only committed main; tokens are required, scoped, expiring and revocable",
+  "guest capability reads the committed tree but not working drafts; tokens remain scoped and revocable",
   { skip: !enabled },
   async () => {
     const { s, objects } = fixture();
@@ -496,9 +496,62 @@ test(
     const draft = blankSnapshot("Unpublished secret");
     draft.blocks[0].text = "INT. PRIVATE ROOM - NIGHT";
     await save(s, objects, alice, p.projectId, "main", p.head, 0, draft);
-    const read = await s.sharedInvitation(
-      { ...invite, branchId: "private", commitId: "fake" },
+    const read = await s.sharedInvitation(invite, true);
+    await s.createBranch(alice, {
+      projectId: p.projectId,
+      name: "alternate",
+      sourceBranch: "main",
+      expectedHead: p.head,
+      requestId: unique(),
+    });
+    const alternate = blankSnapshot("Alternate ending");
+    alternate.blocks[0].text = "INT. TRAIN - DAY";
+    const saved = await save(
+      s,
+      objects,
+      alice,
+      p.projectId,
+      "alternate",
+      p.head,
+      0,
+      alternate,
+    );
+    const job = await queue(
+      s,
+      alice,
+      p.projectId,
+      "alternate",
+      p.head,
+      saved.version,
+    );
+    await s.processCommit(p.projectId, job.operationId);
+    const alternateRead = await s.sharedInvitation(
+      { ...invite, branchId: "alternate" },
       true,
+    );
+    assert.equal(alternateRead.draft.title, "Alternate ending");
+    assert.deepEqual(alternateRead.branches.map((b) => b.name).sort(), [
+      "alternate",
+      "main",
+    ]);
+    const history = await s.sharedInvitation(
+      { ...invite, commitId: alternateRead.commitId, history: true },
+      true,
+    );
+    assert.equal(history.history.length, 2);
+    assert.equal(history.history[1].oid, p.head);
+    assert.equal(
+      (await s.sharedInvitation({ ...invite, commitId: p.head }, true)).draft
+        .title,
+      "Shared script",
+    );
+    await assert.rejects(
+      s.sharedInvitation({ ...invite, branchId: "missing" }, true),
+      { code: "not-found" },
+    );
+    await assert.rejects(
+      s.sharedInvitation({ ...invite, commitId: "fake" }, true),
+      { code: "invalid-argument" },
     );
     assert.equal(read.draft.title, "Shared script");
     assert.equal(read.draft.blocks[0].text, "");
@@ -526,6 +579,10 @@ test(
     await assert.rejects(
       s.sharedInvitation({ ...invite, projectId: other.projectId }, true),
       { code: "permission-denied" },
+    );
+    await assert.rejects(
+      s.sharedInvitation({ ...invite, commitId: other.head }, true),
+      { code: "not-found" },
     );
     await s.acceptInvitation(bob, invite);
     await s.revokeInvitation(alice, invite);

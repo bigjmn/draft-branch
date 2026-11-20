@@ -205,3 +205,72 @@ dialog.share-dialog {
     padding: 20px;
   }
 }
+
+/* Native editor chrome is reused for readers; scope invitation styling against global header rules. */
+.invitation-header {
+  background: var(--surface);
+  color: var(--ink);
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.reader-signup {
+  margin: auto;
+  width: min(470px, calc(100vw - 32px));
+  max-height: 90dvh;
+  overflow: auto;
+  padding: 24px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.reader-signup h2 {
+  font-size: 24px;
+  margin: 8px 0 12px;
+}
+.reader-signup > p {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+.reader-signup-close {
+  float: right;
+  font-size: 24px;
+}
+.reader-signup .auth-card {
+  --color-ink: #222227;
+  color: #222227;
+}
+.reader-contribute {
+  position: fixed;
+  bottom: 44px;
+  right: 24px;
+  padding: 10px 16px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  z-index: 10;
+}
+.toolbar select:disabled,
+.scene-header button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media print {
+  .reader-contribute,
+  .reader-signup {
+    display: none;
+  }
+}
+
+.reader-branch-select {
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 10px;
+  max-width: 220px;
+}

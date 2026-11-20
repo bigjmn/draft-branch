@@ -27,14 +27,17 @@ export class ScreenplayEngine {
     private root: HTMLDivElement,
     blocks: ScriptBlock[],
     private callbacks: Callbacks,
+    private readOnly = false,
   ) {
     const content = this.createPage();
     blocks.forEach((block) => content.append(this.createBlock(block)));
     const options = { signal: this.abort.signal };
     root.addEventListener("focusin", this.onFocus, options);
-    root.addEventListener("input", this.onInput, options);
-    root.addEventListener("keydown", this.onKeyDown, options);
-    root.addEventListener("paste", this.onPaste, options);
+    if (!readOnly) {
+      root.addEventListener("input", this.onInput, options);
+      root.addEventListener("keydown", this.onKeyDown, options);
+      root.addEventListener("paste", this.onPaste, options);
+    }
     this.paginate();
   }
 
@@ -56,12 +59,15 @@ export class ScreenplayEngine {
   private createBlock(value: ScriptBlock) {
     const block = document.createElement("div");
     block.className = "block";
-    block.contentEditable = "true";
+    block.contentEditable = this.readOnly ? "false" : "true";
+    if (this.readOnly) block.tabIndex = 0;
     block.spellcheck = true;
     block.dataset.id = value.id;
     this.applyType(block, value.type);
-    block.setAttribute("role", "textbox");
-    block.setAttribute("aria-multiline", "true");
+    if (!this.readOnly) {
+      block.setAttribute("role", "textbox");
+      block.setAttribute("aria-multiline", "true");
+    }
     block.textContent = value.text;
     return block;
   }
@@ -184,6 +190,7 @@ export class ScreenplayEngine {
     }
   }
   setType(type: ElementType) {
+    if (this.readOnly) return;
     const block = this.active?.isConnected ? this.active : this.blocks()[0];
     if (!block) return;
     block.focus({ preventScroll: true });
@@ -231,6 +238,7 @@ export class ScreenplayEngine {
     selection?.addRange(range);
   }
   append(type: ElementType) {
+    if (this.readOnly) return;
     const block = this.createBlock({ id: crypto.randomUUID(), type, text: "" });
     this.root.lastElementChild?.querySelector(".page-content")?.append(block);
     this.paginate();

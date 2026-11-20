@@ -27,7 +27,7 @@ export function invitationMessage(
     to: job.to,
     subject: "You’re invited to a DraftBranch project",
     messageId: `<draftbranch-invitation-${jobId}@draftbranch.com>`,
-    text: `${job.ownerName} has invited you to “${job.title}” with ${role} access.\n\n${role === "Editor" ? "Sign in or create an account with this email address, verify it, and accept the invitation to branch and contribute. You can also continue with read-only access without an account." : "You can read without creating an account, or sign in to add the project to your dashboard."}\n\nOpen your invitation:\n${job.link}\n\nThis link expires after 7 days. Anyone holding it can read the latest committed main draft until it expires or is revoked. Keep it private.\n\nIf you weren’t expecting this invitation, you can ignore it.\nDraftBranch · J Nicks Productions`,
+    text: `${job.ownerName} has invited you to “${job.title}” with ${role} access.\n\n${role === "Editor" ? "Sign in or create an account with this email address, verify it, and accept the invitation to branch and contribute. You can also continue with read-only access without an account." : "You can read without creating an account, or sign in to add the project to your dashboard."}\n\nOpen your invitation:\n${job.link}\n\nThis link expires after 7 days. Anyone holding it can read the committed branches and revision history until it expires or is revoked. Keep it private.\n\nIf you weren’t expecting this invitation, you can ignore it.\nDraftBranch · J Nicks Productions`,
   };
 }
 

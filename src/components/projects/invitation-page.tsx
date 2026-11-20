@@ -18,7 +18,8 @@ import {
 } from "@/lib/projects/client";
 import { validProjectId, projectHref } from "@/lib/projects/routes";
 import type { Draft } from "@/lib/editor/types";
-import { ReadOnlyScreenplay } from "./read-only-screenplay";
+import { ReadOnlyEditor } from "@/components/editor/screenplay-editor";
+import type { Branch } from "@/lib/projects/client";
 
 export function InvitationPage() {
   const params = useSearchParams(),
@@ -27,6 +28,9 @@ export function InvitationPage() {
   const [access, setAccess] = useState<InvitationAccess | null>(null);
   const [info, setInfo] = useState<InvitationInfo | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [branch, setBranch] = useState("main");
+  const [commitId, setCommitId] = useState("");
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [reading, setReading] = useState(false);
   const [mode, setMode] = useState<AuthMode>("signin");
   const [showAuth, setShowAuth] = useState(false);
@@ -60,12 +64,19 @@ export function InvitationPage() {
       running = true;
       try {
         const result = reading
-          ? await readSharedProject(access!)
+          ? await readSharedProject({ ...access!, branchId: branch })
           : await getProjectInvitation(access!);
         if (active) {
           setInfo(result);
           setUnavailable(false);
-          if ("draft" in result) setDraft(result.draft as Draft);
+          if ("draft" in result) {
+            const shared = result as Awaited<
+              ReturnType<typeof readSharedProject>
+            >;
+            setDraft(shared.draft);
+            setCommitId(shared.commitId);
+            setBranches(shared.branches);
+          }
         }
       } catch {
         if (active) {
@@ -86,7 +97,7 @@ export function InvitationPage() {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [access, reading]);
+  }, [access, reading, branch]);
   useEffect(() => {
     if (!info) return;
     const timer = setTimeout(
@@ -134,6 +145,36 @@ export function InvitationPage() {
   }
   const registered = user && !user.isAnonymous;
   if (!unavailable && (!info || loading)) return <TypewriterLoader />;
+  if (reading && !unavailable && access && info) {
+    if (!draft) return <TypewriterLoader />;
+    return (
+      <ReadOnlyEditor
+        key={`${branch}:${commitId}`}
+        project={{
+          id: access.projectId,
+          uid: user?.uid || "",
+          branch,
+          role: "reviewer",
+          initial: {
+            draft: { ...draft, schemaVersion: 1 },
+            baseCommit: commitId,
+            head: commitId,
+            version: 0,
+          },
+        }}
+        reader={{
+          access,
+          branches,
+          onBranchChange: (next) => {
+            setDraft(null);
+            setBranch(next);
+          },
+          onContribute: () => setReading(false),
+        }}
+      />
+    );
+  }
+
   return (
     <main className="invitation-page">
       <header className="invitation-header">
@@ -165,8 +206,8 @@ export function InvitationPage() {
                 : "Read without an account, or sign in to keep this project in your dashboard."}
             </p>
             <p className="share-description">
-              Read access shows the latest committed main draft. This link
-              expires {new Date(info.expiresAt).toLocaleDateString()}.
+              Read access includes all committed branches and their history.
+              This link expires {new Date(info.expiresAt).toLocaleDateString()}.
             </p>
             {!reading && (
               <button
@@ -251,12 +292,6 @@ export function InvitationPage() {
               <AuthPanel mode={mode} onModeChange={setMode} />
             </div>
           )}
-          {reading &&
-            (draft ? (
-              <ReadOnlyScreenplay draft={draft} />
-            ) : (
-              <p role="status">Loading published screenplay…</p>
-            ))}
         </>
       )}
     </main>

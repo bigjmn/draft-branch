@@ -7,7 +7,7 @@ Owners open **Share** in the editor, enter an email address, and select Reader o
 - Reader: read committed drafts. Accepting an invitation adds the project to the account dashboard.
 - Editor: read, create branches, save working drafts, and commit to unprotected branches. Only the owner can commit to protected `main`, invite people, or manage access.
 - A recipient opens `/invite?project=…&invitation=…#token=…`. The page shows the owner's name, project title, granted role, sign-in/create-account options, and **Continue with read-only access**.
-- Reading through an invitation requires no account. It exposes only the latest committed `main` snapshot, never private working drafts or other branches. An empty/new project therefore shows its initial committed draft until the owner commits changes.
+- Reading through an invitation requires no account. It exposes the committed branches and revision history, never private working drafts. An empty/new project therefore shows its initial committed draft until the owner commits changes.
 - Accepting requires a permanent account with the invited email verified. The recipient can send a verification email from the invitation page, then return and accept. Wrong-email accounts cannot accept. Existing membership is preserved rather than silently upgraded by another invitation.
 - Links expire after seven days. Anyone holding a link, including someone it was forwarded to, can read until expiration or revocation. This is intentional bearer-link access; normal project URLs remain membership-protected.
 - Revoking a link does not remove an already accepted member. **Remove access** removes membership and revokes that member's accepted invitation links. Previously downloaded/copied content cannot be recalled. Guest views revalidate on focus and every 30 seconds.
@@ -34,3 +34,7 @@ SMTP provider, sender verification, and production deployment are required befor
 Run `npm run test:backend` for service and Firebase rules tests. Run `npm run test:backend:smoke` with Java available for real callable and event-delivery tests. In Functions emulation the email worker writes to the server-only `emulatorMail` collection instead of sending real email. Use a local ignored `functions/.secret.local` containing `INVITATION_SMTP_URL=smtp://localhost:1025` if the emulator requests a secret override. The default emulator invitation origin is `http://localhost:3010`; override `PUBLIC_APP_URL` if your preview uses another port.
 
 Relevant files: `functions/src/projects/service.ts`, `functions/src/projects/mail.ts`, `src/components/projects/share-project.tsx`, `src/components/projects/invitation-page.tsx`, and `src/styles/sharing.css`.
+
+## Reader workspace
+
+Readers use the standard editor shell with the title in the header, theme controls, scene navigation, zoom, focus, export, and branch selection. Version control exposes branch history and revision diffs; creating branches and committing are disabled. Guest invitation readers use the same UI through token-validated callable reads, without direct Firestore access. Private uncommitted drafts are excluded. Dashboard navigation prompts signed-out guests to create an account. Sign-in no longer requires repeating the signup agreement checkbox.

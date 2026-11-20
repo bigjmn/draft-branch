@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Bash(*)",
+      "Bash(npx prettier *)",
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "mcp__plugin_firebase_firebase",
+      "mcp__firebase",
+      "mcp__plugin_firebase_firebase__firebase_get_environment",
+      "mcp__plugin_firebase_firebase__firebase_create_project",
+      "mcp__plugin_firebase_firebase__firebase_update_environment",
+      "mcp__plugin_firebase_firebase__firebase_create_app",
+      "mcp__plugin_firebase_firebase__firebase_init",
+      "mcp__plugin_firebase_firebase__firebase_get_sdk_config",
+      "WebFetch(domain:www.writerduet.com)"
+    ]
+  }
+}

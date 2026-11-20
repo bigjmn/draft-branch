@@ -1,5 +1,6 @@
 import { ELEMENT_LABELS, type ElementType } from "@/lib/editor/types";
 interface Props {
+  readOnly?: boolean;
   type: ElementType;
   zoom: string;
   focus: boolean;
@@ -7,13 +8,22 @@ interface Props {
   onZoom: (zoom: string) => void;
   onFocus: () => void;
 }
-export function Toolbar({ type, zoom, focus, onType, onZoom, onFocus }: Props) {
+export function Toolbar({
+  readOnly = false,
+  type,
+  zoom,
+  focus,
+  onType,
+  onZoom,
+  onFocus,
+}: Props) {
   return (
     <div className="toolbar" aria-label="Screenplay formatting">
       <div className="tool-group">
         <label htmlFor="element">ELEMENT</label>
         <select
           id="element"
+          disabled={readOnly}
           value={type}
           onChange={(event) => onType(event.target.value as ElementType)}
         >

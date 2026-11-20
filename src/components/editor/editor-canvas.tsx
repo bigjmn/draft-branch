@@ -14,6 +14,7 @@ export interface CanvasHandle {
   paginate: () => void;
 }
 interface Props {
+  readOnly?: boolean;
   initialBlocks: ScriptBlock[];
   onChange: (blocks: ScriptBlock[]) => void;
   onSelection: (id: string, type: ElementType) => void;
@@ -47,12 +48,13 @@ export const EditorCanvas = forwardRef<CanvasHandle, Props>(
           onSelection: (id, type) => latest.current.onSelection(id, type),
           onLayout: (layout) => latest.current.onLayout(layout),
         },
+        props.readOnly,
       );
       return () => {
         engine.current?.destroy();
         engine.current = null;
       };
-    }, []);
+    }, [props.readOnly]);
     return <div id="pages" ref={root} aria-label="Screenplay pages" />;
   },
 );

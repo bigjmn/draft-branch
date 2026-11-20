@@ -2,7 +2,7 @@
 import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 
 import Link from "next/link";
-import { ReadOnlyScreenplay } from "./read-only-screenplay";
+import { ReadOnlyEditor } from "@/components/editor/screenplay-editor";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -90,6 +90,7 @@ function MemberEditor({
           return;
         }
         setDenied(false);
+        setState(null);
         loadProjectDraft(projectId, branch)
           .then((draft) => {
             if (active && run === generation) setState({ draft, role });
@@ -116,13 +117,16 @@ function MemberEditor({
   if (!state) return <TypewriterLoader />;
   if (state.role === "reviewer")
     return (
-      <main className="invitation-page">
-        <header className="invitation-header">
-          <Link href="/dashboard">← Projects</Link>
-          <span>Reader · {branch}</span>
-        </header>
-        <ReadOnlyScreenplay draft={state.draft.draft} />
-      </main>
+      <ReadOnlyEditor
+        key={`${branch}:${state.draft.baseCommit}`}
+        project={{
+          id: projectId,
+          uid,
+          initial: state.draft,
+          branch,
+          role: state.role,
+        }}
+      />
     );
   return (
     <ScreenplayEditor

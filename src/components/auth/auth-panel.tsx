@@ -33,7 +33,7 @@ export function AuthPanel({
   const [error, setError] = useState<string | null>(null);
 
   async function run(action: () => Promise<unknown>) {
-    if (!agreed) {
+    if (mode === "signup" && !agreed) {
       setError(
         "Please agree to the Terms of Use and Privacy Policy to continue.",
       );
@@ -110,31 +110,33 @@ export function AuthPanel({
           : "Sign in to pick up where you left off."}
       </p>
 
-      <div className="auth-agreement">
-        <input
-          id="legal-agreement"
-          type="checkbox"
-          checked={agreed}
-          disabled={disabled}
-          onChange={(event) => setAgreed(event.target.checked)}
-          aria-labelledby="legal-agreement-label"
-        />
-        <label id="legal-agreement-label" htmlFor="legal-agreement">
-          I agree to the{" "}
-          <a href="/terms" target="_blank" rel="noopener noreferrer">
-            Terms of Use
-          </a>{" "}
-          and{" "}
-          <a href="/privacy" target="_blank" rel="noopener noreferrer">
-            Privacy Policy
-          </a>
-        </label>
-      </div>
+      {mode === "signup" && (
+        <div className="auth-agreement">
+          <input
+            id="legal-agreement"
+            type="checkbox"
+            checked={agreed}
+            disabled={disabled}
+            onChange={(event) => setAgreed(event.target.checked)}
+            aria-labelledby="legal-agreement-label"
+          />
+          <label id="legal-agreement-label" htmlFor="legal-agreement">
+            I agree to the{" "}
+            <a href="/terms" target="_blank" rel="noopener noreferrer">
+              Terms of Use
+            </a>{" "}
+            and{" "}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer">
+              Privacy Policy
+            </a>
+          </label>
+        </div>
+      )}
 
       <button
         type="button"
         className="google-button"
-        disabled={disabled || !agreed}
+        disabled={disabled || (mode === "signup" && !agreed)}
         onClick={() =>
           run(() => signInWithPopup(firebaseAuth(), new GoogleAuthProvider()))
         }
@@ -211,7 +213,7 @@ export function AuthPanel({
         <button
           type="submit"
           className="auth-submit"
-          disabled={disabled || !agreed}
+          disabled={disabled || (mode === "signup" && !agreed)}
         >
           {busy
             ? "One moment…"

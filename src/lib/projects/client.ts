@@ -257,11 +257,18 @@ export interface InvitationInfo {
 }
 export const getProjectInvitation = (input: InvitationAccess) =>
   call<InvitationInfo>("getProjectInvitation", input);
-export const readSharedProject = (input: InvitationAccess) =>
-  call<InvitationInfo & { draft: Draft; commitId: string }>(
-    "readSharedProject",
-    input,
-  );
+export const readSharedProject = (
+  input: InvitationAccess & { branchId?: string; commitId?: string },
+) =>
+  call<
+    InvitationInfo & {
+      draft: Draft;
+      commitId: string;
+      branchId: string;
+      branches: Branch[];
+      parent: string[];
+    }
+  >("readSharedProject", input);
 export const updateProjectMemberRole = (
   projectId: string,
   uid: string,
@@ -321,3 +328,10 @@ export function watchSharing(
     stopInvites();
   };
 }
+
+export const readSharedHistory = (input: InvitationAccess, head: string) =>
+  call<{ history: RevisionSummary[] }>("readSharedProject", {
+    ...input,
+    commitId: head,
+    history: true,
+  }).then((result) => result.history);

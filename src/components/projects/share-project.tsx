@@ -108,8 +108,8 @@ function ShareDialog({
         </button>
       </div>
       <p className="share-description">
-        Invite someone by email. Links share the latest committed main draft;
-        your uncommitted writing stays private.
+        Invite someone by email. Links share the committed branches and revision
+        history; your uncommitted writing stays private.
       </p>
       <form
         className="share-invite-form"
