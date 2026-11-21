@@ -8,6 +8,20 @@ service cloud.firestore {
     function owner(projectId) {
       return member(projectId) && get(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid)).data.role == 'owner';
     }
+    match /profiles/{uid} {
+      allow get: if true;
+      allow list, delete: if false;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && request.resource.data.keys().hasAll(['name', 'job', 'company', 'bio', 'avatarId', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['name', 'job', 'company', 'bio', 'avatarId', 'updatedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100
+        && request.resource.data.job is string && request.resource.data.job.size() <= 100
+        && request.resource.data.company is string && request.resource.data.company.size() <= 100
+        && request.resource.data.bio is string && request.resource.data.bio.size() <= 500
+        && request.resource.data.avatarId is string && (request.resource.data.avatarId == '' || request.resource.data.avatarId.matches('^[a-f0-9-]{36}$'))
+        && request.resource.data.updatedAt == request.time;
+    }
     match /invitationMail/{id} { allow read, write: if false; }
     match /invitationLimits/{id} { allow read, write: if false; }
     match /emulatorMail/{id} { allow read, write: if false; }
@@ -38,6 +52,7 @@ service cloud.firestore {
         allow read: if member(projectId) && (resource.data.actor.uid == request.auth.uid || owner(projectId));
         allow write: if false;
       }
+      match /mergeRequests/{requestId} { allow read: if member(projectId); allow write: if false; }
       match /invitations/{invitationId} { allow read: if owner(projectId); allow write: if false; }
       match /requests/{requestId} { allow read, write: if false; }
     }

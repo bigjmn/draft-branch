@@ -19,6 +19,7 @@ import {
   firebaseStorage,
 } from "@/lib/firebase/client";
 import type { Draft } from "@/lib/editor/types";
+import type { Resolution } from "@/lib/projects/merge";
 
 export interface Project {
   projectId: string;
@@ -50,10 +51,15 @@ async function call<T>(name: string, data: unknown): Promise<T> {
   return (await httpsCallable<unknown, T>(firebaseFunctions(), name)(data))
     .data;
 }
-export const createProject = (title: string, requestId = crypto.randomUUID()) =>
+export const createProject = (
+  title: string,
+  requestId = crypto.randomUUID(),
+  draft?: Draft,
+) =>
   call<{ projectId: string; branchId: string; head: string }>("createProject", {
     title,
     requestId,
+    ...(draft ? { draft } : {}),
   });
 export const loadProjectDraft = (projectId: string, branchId: string) =>
   call<CloudDraft>("loadProjectDraft", { projectId, branchId });
@@ -218,8 +224,11 @@ export interface RevisionSummary {
   oid: string;
   message: string;
   actorUid: string;
+  /** Recorded on commits made after author names were added. */
+  authorName?: string | null;
   timestamp: number;
   parent: string[];
+  merge?: { sourceBranch: string; targetBranch: string };
 }
 /** Follow actual parents, rather than treating time ordering as ancestry. */
 export async function loadBranchHistory(
@@ -335,3 +344,160 @@ export const readSharedHistory = (input: InvitationAccess, head: string) =>
     commitId: head,
     history: true,
   }).then((result) => result.history);
+
+/** Matches GRAPH_LIMIT in functions/src/projects/service.ts. */
+export const GRAPH_LIMIT = 300;
+/** Live commit metadata for the graph: the newest commits across all branches. */
+export function watchCommitGraph(
+  projectId: string,
+  next: (value: RevisionSummary[]) => void,
+  error: (error: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    query(
+      collection(firebaseDb(), "projects", projectId, "commits"),
+      orderBy("timestamp", "desc"),
+      limit(GRAPH_LIMIT),
+    ),
+    (snapshot) =>
+      next(
+        snapshot.docs.map(
+          (item) => ({ ...item.data(), oid: item.id }) as RevisionSummary,
+        ),
+      ),
+    error,
+  );
+}
+export const readSharedGraph = (input: InvitationAccess) =>
+  call<{ commits: RevisionSummary[] }>("readSharedProject", {
+    ...input,
+    graph: true,
+  }).then((result) => result.commits);
+export function watchMembers(
+  projectId: string,
+  next: (rows: SharedMember[]) => void,
+  error: (error: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    collection(firebaseDb(), "projects", projectId, "members"),
+    (snapshot) => next(snapshot.docs.map((d) => d.data() as SharedMember)),
+    error,
+  );
+}
+
+export interface MergeRequest {
+  id: string;
+  title: string;
+  description: string;
+  sourceBranch: string;
+  targetBranch: string;
+  authorUid: string;
+  authorName?: string;
+  status: "open" | "merged" | "closed";
+  mergedCommit?: string;
+  mergedByName?: string;
+  closedByName?: string;
+  createdAt: number;
+}
+export function watchMergeRequests(
+  projectId: string,
+  next: (rows: MergeRequest[]) => void,
+  error: (error: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    query(
+      collection(firebaseDb(), "projects", projectId, "mergeRequests"),
+      orderBy("createdAt", "desc"),
+      limit(50),
+    ),
+    (snapshot) =>
+      next(
+        snapshot.docs.map(
+          (d) =>
+            ({
+              ...d.data(),
+              id: d.id,
+              // Pending server timestamps read as null in latency compensation.
+              createdAt: d.data().createdAt?.toMillis?.() ?? Date.now(),
+            }) as MergeRequest,
+        ),
+      ),
+    error,
+  );
+}
+export interface MergePreview {
+  sourceHead: string;
+  targetHead: string;
+  baseCommit: string;
+  upToDate: boolean;
+  fastForward: boolean;
+  base: Draft;
+  target: Draft;
+  source: Draft;
+}
+export const previewMerge = (
+  projectId: string,
+  sourceBranch: string,
+  targetBranch: string,
+) =>
+  call<MergePreview>("previewProjectMerge", {
+    projectId,
+    sourceBranch,
+    targetBranch,
+  });
+export const mergeBranches = (input: {
+  projectId: string;
+  sourceBranch: string;
+  targetBranch: string;
+  expectedSourceHead: string;
+  expectedTargetHead: string;
+  resolutions: Record<string, Resolution>;
+  message: string;
+  mergeRequestId?: string;
+  requestId: string;
+}) =>
+  call<{ commitId: string; branchId: string }>("mergeProjectBranches", input);
+export const openMergeRequest = (input: {
+  projectId: string;
+  sourceBranch: string;
+  targetBranch: string;
+  title: string;
+  description: string;
+  requestId: string;
+}) =>
+  call<{ mergeRequestId: string; status: MergeRequest["status"] }>(
+    "openMergeRequest",
+    input,
+  );
+export const closeMergeRequest = (projectId: string, mergeRequestId: string) =>
+  call<{ closed: boolean }>("closeMergeRequest", {
+    projectId,
+    mergeRequestId,
+  });
+
+/** Upload a draft and wait for the Storage trigger to accept it. */
+export async function saveProjectDraft(input: {
+  projectId: string;
+  branchId: string;
+  baseCommit: string;
+  expectedVersion: number;
+  draft: Draft;
+  requestId: string;
+}): Promise<UploadResult> {
+  const { uploadId } = await uploadProjectDraft(input);
+  return new Promise((resolve, reject) => {
+    const stop = watchUpload(
+      input.projectId,
+      uploadId,
+      (result) => {
+        if (result.status === "awaiting_upload") return;
+        stop();
+        resolve(result);
+      },
+      (error) => {
+        stop();
+        reject(error);
+      },
+    );
+  });
+}

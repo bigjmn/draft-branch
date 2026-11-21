@@ -1,3 +1,5 @@
+import { editorText } from "./dom-text";
+import { parseClipboard, SCREENPLAY_MIME, validateImport } from "./import";
 import {
   ELEMENT_LABELS,
   NEXT_ELEMENT,
@@ -21,6 +23,9 @@ interface Callbacks {
 export class ScreenplayEngine {
   private abort = new AbortController();
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private history: ScriptBlock[][] = [];
+  private historyIndex = 0;
+  private restoring = false;
   private active: HTMLDivElement | null = null;
 
   constructor(
@@ -29,12 +34,27 @@ export class ScreenplayEngine {
     private callbacks: Callbacks,
     private readOnly = false,
   ) {
+    this.history = [blocks.map((b) => ({ ...b }))];
     const content = this.createPage();
     blocks.forEach((block) => content.append(this.createBlock(block)));
     const options = { signal: this.abort.signal };
     root.addEventListener("focusin", this.onFocus, options);
+    root.addEventListener("copy", this.onCopy, options);
     if (!readOnly) {
       root.addEventListener("input", this.onInput, options);
+      root.addEventListener(
+        "beforeinput",
+        (event) => {
+          if (
+            event.inputType === "historyUndo" ||
+            event.inputType === "historyRedo"
+          ) {
+            event.preventDefault();
+            this.travelHistory(event.inputType === "historyRedo" ? 1 : -1);
+          }
+        },
+        options,
+      );
       root.addEventListener("keydown", this.onKeyDown, options);
       root.addEventListener("paste", this.onPaste, options);
     }
@@ -54,7 +74,7 @@ export class ScreenplayEngine {
     return block.dataset.type as ElementType;
   }
   private text(block: HTMLElement) {
-    return block.innerText.replace(/\r/g, "");
+    return editorText(block);
   }
   private createBlock(value: ScriptBlock) {
     const block = document.createElement("div");
@@ -85,7 +105,25 @@ export class ScreenplayEngine {
     this.root.append(page);
     return content;
   }
+  private snapshot() {
+    return this.blocks().map((b) => ({
+      id: b.dataset.id!,
+      type: this.type(b),
+      text: this.text(b),
+    }));
+  }
   private changed() {
+    if (!this.restoring) {
+      const next = this.snapshot();
+      if (
+        JSON.stringify(next) !== JSON.stringify(this.history[this.historyIndex])
+      ) {
+        this.history.splice(this.historyIndex + 1);
+        this.history.push(next);
+        if (this.history.length > 100) this.history.shift();
+        this.historyIndex = this.history.length - 1;
+      }
+    }
     this.callbacks.onChange(
       this.blocks().map((block) => ({
         id: block.dataset.id!,
@@ -103,20 +141,135 @@ export class ScreenplayEngine {
     this.callbacks.onSelection(block.dataset.id!, this.type(block));
   };
   private onInput = () => this.changed();
-  private onPaste = (event: ClipboardEvent) => {
-    if (
-      !(event.target instanceof HTMLElement) ||
-      !event.target.matches(".block")
-    )
-      return;
+  private selectedRange() {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return null;
+    const range = selection.getRangeAt(0);
+    const blocks = this.blocks();
+    const start = blocks.find((b) => b.contains(range.startContainer));
+    const end = blocks.find((b) => b.contains(range.endContainer));
+    return start && end ? { range, blocks, start, end } : null;
+  }
+  private onCopy = (event: ClipboardEvent) => {
+    const selected = this.selectedRange();
+    if (!selected || selected.range.collapsed || !event.clipboardData) return;
+    const { range, blocks, start, end } = selected;
+    const copied = blocks
+      .slice(blocks.indexOf(start), blocks.indexOf(end) + 1)
+      .map((b) => {
+        const part = document.createRange();
+        part.selectNodeContents(b);
+        if (b === start) part.setStart(range.startContainer, range.startOffset);
+        if (b === end) part.setEnd(range.endContainer, range.endOffset);
+        return { type: this.type(b), text: part.toString() };
+      });
     event.preventDefault();
-    // Browser's editing transaction retains native undo for plain-text paste.
-    document.execCommand(
-      "insertText",
-      false,
-      event.clipboardData?.getData("text/plain") ?? "",
+    event.clipboardData.setData(SCREENPLAY_MIME, JSON.stringify(copied));
+    event.clipboardData.setData(
+      "text/plain",
+      copied.map((b) => b.text).join("\n"),
     );
+    const container = document.createElement("div");
+    copied.forEach((b) => {
+      const el = document.createElement("p");
+      el.dataset.type = b.type;
+      el.textContent = b.text;
+      container.append(el);
+    });
+    event.clipboardData.setData("text/html", container.innerHTML);
   };
+  private onPaste = (event: ClipboardEvent) => {
+    const selected = this.selectedRange();
+    if (!selected || !event.clipboardData) return;
+    event.preventDefault();
+    const { range, blocks, start, end } = selected;
+    try {
+      let pasted = parseClipboard(event.clipboardData, this.type(start));
+      if (!pasted && start === end) {
+        document.execCommand(
+          "insertText",
+          false,
+          event.clipboardData.getData("text/plain"),
+        );
+        return;
+      }
+      pasted ??= [
+        {
+          id: crypto.randomUUID(),
+          type: this.type(start),
+          text: event.clipboardData.getData("text/plain"),
+        },
+      ];
+      if (!pasted.length) return;
+      const before = range.cloneRange();
+      before.selectNodeContents(start);
+      before.setEnd(range.startContainer, range.startOffset);
+      const after = range.cloneRange();
+      after.selectNodeContents(end);
+      after.setStart(range.endContainer, range.endOffset);
+      const prefix = before.toString(),
+        suffix = after.toString();
+      // Preserve existing partial paragraphs; whole-element paste keeps explicit types.
+      if (prefix) {
+        if (pasted[0].type === this.type(start))
+          pasted[0].text = prefix + pasted[0].text;
+        else
+          pasted.unshift({
+            id: start.dataset.id!,
+            type: this.type(start),
+            text: prefix,
+          });
+      }
+      const caretId = pasted.at(-1)!.id,
+        caretOffset = pasted.at(-1)!.text.length;
+      if (suffix) {
+        if (pasted.at(-1)!.type === this.type(end))
+          pasted.at(-1)!.text += suffix;
+        else
+          pasted.push({
+            id: crypto.randomUUID(),
+            type: this.type(end),
+            text: suffix,
+          });
+      }
+      const first = blocks.indexOf(start),
+        last = blocks.indexOf(end);
+      validateImport({
+        title: "",
+        blocks: [
+          ...this.snapshot().slice(0, first),
+          ...pasted,
+          ...this.snapshot().slice(last + 1),
+        ],
+      });
+      const elements = pasted.map((b) => this.createBlock(b));
+      start.before(...elements);
+      blocks.slice(first, last + 1).forEach((b) => b.remove());
+      const caret = elements.find((b) => b.dataset.id === caretId)!;
+      caret.focus();
+      this.setCaret(caret, caretOffset);
+      this.changed();
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Could not paste this screenplay.",
+      );
+    }
+  };
+  private travelHistory(direction: number) {
+    const next = this.historyIndex + direction;
+    if (next < 0 || next >= this.history.length) return;
+    this.historyIndex = next;
+    this.root.replaceChildren();
+    const page = this.createPage();
+    this.history[next].forEach((b) => page.append(this.createBlock(b)));
+    this.restoring = true;
+    this.changed();
+    this.restoring = false;
+    this.paginate();
+    this.focusBlock(this.blocks().at(-1)!, true);
+  }
   private onKeyDown = (event: KeyboardEvent) => {
     const block = event.target;
     if (
@@ -125,7 +278,15 @@ export class ScreenplayEngine {
       event.isComposing
     )
       return;
-    if (event.key === "Tab") {
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")
+    ) {
+      event.preventDefault();
+      this.travelHistory(
+        event.shiftKey || event.key.toLowerCase() === "y" ? 1 : -1,
+      );
+    } else if (event.key === "Tab") {
       event.preventDefault();
       this.retype(
         block,

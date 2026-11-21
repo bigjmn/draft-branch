@@ -792,3 +792,266 @@ test(
     );
   },
 );
+
+/** Save `draft` on `branch` and commit it; returns the new head. */
+async function commitOn(s, objects, a, pid, branch, draft) {
+  const loaded = await s.loadDraft(a, { projectId: pid, branchId: branch });
+  const saved = await save(
+    s,
+    objects,
+    a,
+    pid,
+    branch,
+    loaded.baseCommit,
+    loaded.version,
+    draft,
+  );
+  assert.equal(saved.status, "accepted");
+  const job = await queue(s, a, pid, branch, loaded.head, saved.version);
+  await s.processCommit(pid, job.operationId);
+  const done = (
+    await db.doc(`projects/${pid}/operations/${job.operationId}`).get()
+  ).data();
+  assert.equal(done.status, "succeeded", done.error);
+  return done.commitId;
+}
+
+test(
+  "merge requests: editors propose, only the owner merges into main; conflicts must be resolved",
+  { skip: !enabled },
+  async () => {
+    const { s, objects } = fixture();
+    const { projectId: pid } = await s.createProject(alice, {
+      title: "Merge",
+      requestId: unique(),
+    });
+    const scene = (text) => ({ id: "s1", type: "scene", text });
+    const action = (text) => ({ id: "a1", type: "action", text });
+    const start = await commitOn(s, objects, alice, pid, "main", {
+      title: "Merge",
+      blocks: [scene("INT. HOUSE - DAY"), action("Quiet.")],
+    });
+    const invite = await inviteWithToken(s, alice, {
+      projectId: pid,
+      email: bob.email,
+      role: "editor",
+      requestId: unique(),
+    });
+    await s.acceptInvitation(bob, invite);
+    await s.createBranch(bob, {
+      projectId: pid,
+      name: "rewrite",
+      sourceBranch: "main",
+      expectedHead: start,
+      requestId: unique(),
+    });
+    const branchHead = await commitOn(s, objects, bob, pid, "rewrite", {
+      title: "Merge",
+      blocks: [
+        scene("INT. HOUSE - DAY"),
+        action("Thunder."),
+        { id: "s2", type: "scene", text: "EXT. GARDEN - NIGHT" },
+      ],
+    });
+    const mainHead = await commitOn(s, objects, alice, pid, "main", {
+      title: "Merge (draft 2)",
+      blocks: [scene("INT. HOUSE - DAY"), action("Rain.")],
+    });
+    // Alice's clean working draft follows main after her own commit.
+    const reload = await s.loadDraft(alice, {
+      projectId: pid,
+      branchId: "main",
+    });
+    assert.equal(reload.baseCommit, mainHead);
+
+    const preview = await s.previewMerge(bob, {
+      projectId: pid,
+      sourceBranch: "rewrite",
+      targetBranch: "main",
+    });
+    assert.equal(preview.baseCommit, start);
+    assert.equal(preview.upToDate, false);
+
+    const request = await s.openMergeRequest(bob, {
+      projectId: pid,
+      sourceBranch: "rewrite",
+      targetBranch: "main",
+      title: "Storm rewrite",
+      requestId: unique(),
+    });
+    await assert.rejects(
+      s.openMergeRequest(bob, {
+        projectId: pid,
+        sourceBranch: "rewrite",
+        targetBranch: "main",
+        title: "Again",
+        requestId: unique(),
+      }),
+      { code: "already-exists" },
+    );
+    const mergeInput = {
+      projectId: pid,
+      sourceBranch: "rewrite",
+      targetBranch: "main",
+      expectedSourceHead: branchHead,
+      expectedTargetHead: mainHead,
+      mergeRequestId: request.mergeRequestId,
+    };
+    // Editors cannot approve merges into protected main.
+    await assert.rejects(
+      s.mergeBranches(bob, {
+        ...mergeInput,
+        resolutions: { "block:a1": "source" },
+        requestId: unique(),
+      }),
+      { code: "permission-denied" },
+    );
+    // Both edited a1: the owner must choose.
+    await assert.rejects(
+      s.mergeBranches(alice, { ...mergeInput, requestId: unique() }),
+      { code: "failed-precondition" },
+    );
+    await assert.rejects(
+      s.mergeBranches(alice, {
+        ...mergeInput,
+        expectedTargetHead: start,
+        resolutions: { "block:a1": "source" },
+        requestId: unique(),
+      }),
+      { code: "aborted" },
+    );
+    const key = unique();
+    const merged = await s.mergeBranches(alice, {
+      ...mergeInput,
+      resolutions: { "block:a1": { text: "Rain, then thunder." } },
+      requestId: key,
+    });
+    assert.deepEqual(
+      await s.mergeBranches(alice, {
+        ...mergeInput,
+        resolutions: { "block:a1": { text: "Rain, then thunder." } },
+        requestId: key,
+      }),
+      merged,
+    );
+    const commit = (
+      await db.doc(`projects/${pid}/commits/${merged.commitId}`).get()
+    ).data();
+    assert.deepEqual(commit.parent, [mainHead, branchHead]);
+    assert.equal(commit.merge.sourceBranch, "rewrite");
+    assert.equal(commit.authorName, "alice");
+    assert.equal(
+      (await db.doc(`projects/${pid}/branches/main`).get()).data().head,
+      merged.commitId,
+    );
+    const result = await s.readRevision(alice, {
+      projectId: pid,
+      commitId: merged.commitId,
+    });
+    assert.equal(result.draft.title, "Merge (draft 2)");
+    assert.deepEqual(
+      result.draft.blocks.map((b) => b.text),
+      ["INT. HOUSE - DAY", "Rain, then thunder.", "EXT. GARDEN - NIGHT"],
+    );
+    assert.equal(
+      (
+        await db
+          .doc(`projects/${pid}/mergeRequests/${request.mergeRequestId}`)
+          .get()
+      ).data().status,
+      "merged",
+    );
+    // Nothing left to merge.
+    await assert.rejects(
+      s.mergeBranches(alice, {
+        ...mergeInput,
+        expectedTargetHead: merged.commitId,
+        requestId: unique(),
+      }),
+      { code: "failed-precondition" },
+    );
+    // Editors may merge main back into their own unprotected branch.
+    const back = await s.mergeBranches(bob, {
+      projectId: pid,
+      sourceBranch: "main",
+      targetBranch: "rewrite",
+      expectedSourceHead: merged.commitId,
+      expectedTargetHead: branchHead,
+      requestId: unique(),
+    });
+    assert.equal(
+      (await db.doc(`projects/${pid}/branches/rewrite`).get()).data().head,
+      back.commitId,
+    );
+    // Bob's clean draft on rewrite follows the new head.
+    assert.equal(
+      (await s.loadDraft(bob, { projectId: pid, branchId: "rewrite" }))
+        .baseCommit,
+      back.commitId,
+    );
+  },
+);
+
+test(
+  "only the author or owner closes a merge request",
+  { skip: !enabled },
+  async () => {
+    const { s } = fixture();
+    const { projectId: pid, head } = await s.createProject(alice, {
+      title: "Close",
+      requestId: unique(),
+    });
+    const invite = await inviteWithToken(s, alice, {
+      projectId: pid,
+      email: bob.email,
+      role: "editor",
+      requestId: unique(),
+    });
+    await s.acceptInvitation(bob, invite);
+    await s.createBranch(alice, {
+      projectId: pid,
+      name: "idea",
+      sourceBranch: "main",
+      expectedHead: head,
+      requestId: unique(),
+    });
+    const request = await s.openMergeRequest(alice, {
+      projectId: pid,
+      sourceBranch: "idea",
+      targetBranch: "main",
+      title: "Idea",
+      requestId: unique(),
+    });
+    await assert.rejects(
+      s.closeMergeRequest(bob, {
+        projectId: pid,
+        mergeRequestId: request.mergeRequestId,
+      }),
+      { code: "permission-denied" },
+    );
+    await s.closeMergeRequest(alice, {
+      projectId: pid,
+      mergeRequestId: request.mergeRequestId,
+    });
+    assert.equal(
+      (
+        await db
+          .doc(`projects/${pid}/mergeRequests/${request.mergeRequestId}`)
+          .get()
+      ).data().status,
+      "closed",
+    );
+  },
+);
+
+ test("imported project starts with its validated screenplay and retries safely", { skip: !enabled }, async () => {
+ const { s } = fixture(); const requestId = unique();
+ const draft = { title: "Original", blocks: [{ id: "scene-1", type: "scene", text: "INT. HOUSE - DAY" }] };
+ const input = { requestId, title: "Imported", draft };
+ const project = await s.createProject(alice, input);
+ assert.deepEqual(await s.createProject(alice, input), project);
+ const loaded = await s.loadDraft(alice, { projectId: project.projectId, branchId: "main" });
+ assert.equal(loaded.draft.title, "Imported"); assert.deepEqual(loaded.draft.blocks, draft.blocks);
+ await assert.rejects(() => s.createProject(alice, { ...input, draft: { ...draft, blocks: [] } }));
+ await assert.rejects(() => s.createProject(alice, { ...input, draft: { ...draft, blocks: [{ ...draft.blocks[0], text: "Changed" }] } }));
+ });

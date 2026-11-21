@@ -1,6 +1,18 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    match /avatars/{uid}/{file} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && file.matches('^[a-f0-9-]{36}\\.png$')
+        && request.resource.contentType == 'image/png'
+        && request.resource.size <= 2 * 1024 * 1024;
+      allow delete: if request.auth != null && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      allow update: if false;
+    }
     // Retain the existing personal-file namespace; deleting one's file is valid.
     match /users/{uid}/{allPaths=**} {
       allow read, delete: if request.auth != null && request.auth.uid == uid;

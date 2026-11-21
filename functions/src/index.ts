@@ -53,6 +53,10 @@ export {
   revokeProjectInvitation,
   loadProjectDraft,
   readProjectRevision,
+  previewProjectMerge,
+  mergeProjectBranches,
+  openMergeRequest,
+  closeMergeRequest,
   processProjectCommit,
   finalizeProjectDraft,
 } from "./projects";

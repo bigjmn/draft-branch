@@ -51,6 +51,14 @@ export const revokeProjectInvitation = callable((s, a, d) =>
 );
 export const loadProjectDraft = callable((s, a, d) => s.loadDraft(a, d));
 export const readProjectRevision = callable((s, a, d) => s.readRevision(a, d));
+export const previewProjectMerge = callable((s, a, d) => s.previewMerge(a, d));
+export const mergeProjectBranches = callable((s, a, d) =>
+  s.mergeBranches(a, d),
+);
+export const openMergeRequest = callable((s, a, d) => s.openMergeRequest(a, d));
+export const closeMergeRequest = callable((s, a, d) =>
+  s.closeMergeRequest(a, d),
+);
 
 export const processProjectCommit = onDocumentCreated(
   {

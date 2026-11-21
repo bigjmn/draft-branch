@@ -13,3 +13,10 @@
 @import "./sharing.css";
 
 @import "./loader.css";
+
+@import "./screenplay-diff.css";
+
+.fdx-import { margin-block: 1rem; }
+.fdx-import label { display: grid; gap: .6rem; }
+.fdx-import input { max-width: 100%; }
+.fdx-import p { font-size: .85rem; line-height: 1.5; }

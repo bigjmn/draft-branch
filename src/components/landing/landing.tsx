@@ -92,12 +92,15 @@ export function Landing() {
           <div className="hero-grid">
             <div className="hero-copy">
               <div className="hero-statements">
-                <p className="hero-presenter">J Nicks Productions proudly presents...</p>
+                <p className="hero-presenter">
+                  J Nicks Productions proudly presents...
+                </p>
                 <h1 className="hero-title">DraftBranch</h1>
-                
+
                 <h2>
-                  <em>Industry-standard</em> screenwriting software with <em>flexible, powerful</em> version control. 
-          </h2>
+                  <em>Industry-standard</em> screenwriting software with{" "}
+                  <em>flexible, powerful</em> version control.
+                </h2>
                 {/* <h1 className="hero-statement">
                   Industry-standard screenwriting software.
                 </h1>
@@ -119,7 +122,8 @@ export function Landing() {
               </button>
               {tryErrorFor(["nav", "hero"])}
               <p className="hero-note">
-                Test it out first before wasting ten seconds and zero dollars on making an account.
+                Test it out first before wasting ten seconds and zero dollars on
+                making an account.
               </p>
             </div>
             <div id="account" className="hero-auth">
@@ -135,13 +139,22 @@ export function Landing() {
             Why <em>DraftBranch</em> exists
           </h2>
           <p>
-            Version control is essential to both engineers and screenwriters: both need to preserve their work, explore alternatives, collaborate, and understand how a project evolved. Engineers use Git - a reliable, open-source tool to manage changes without losing earlier work or overwriting someone else’s contributions. Screenwriters face many of the same challenges, but often manage them through numbered files, emailed drafts, and manually reconciled notes. 
-            <br/>
-            <br/>
-            We dropped the ball on this one. 
-            <br/>
-            <br/>
-            This platform brings Git’s infrastructure into a writing environment designed for scripts, giving writers the freedom to try a different ending, develop scenes in parallel, and bring the best ideas together while keeping a clear history of every revision.
+            Version control is essential to both engineers and screenwriters:
+            both need to preserve their work, explore alternatives, collaborate,
+            and understand how a project evolved. Engineers use Git - a
+            reliable, open-source tool to manage changes without losing earlier
+            work or overwriting someone else’s contributions. Screenwriters face
+            many of the same challenges, but often manage them through numbered
+            files, emailed drafts, and manually reconciled notes.
+            <br />
+            <br />
+            We dropped the ball on this one.
+            <br />
+            <br />
+            This platform brings Git’s infrastructure into a writing environment
+            designed for scripts, giving writers the freedom to try a different
+            ending, develop scenes in parallel, and bring the best ideas
+            together while keeping a clear history of every revision.
           </p>
         </section>
 
@@ -374,7 +387,10 @@ function EditorMock() {
                 station wagon hugs the cliffs.
               </p>
               <p className="c">BEN</p>
-              <p className="d">Is any of this real? What if we exist only in this one tiny interaction, as a lazy showcase of functionality?</p>
+              <p className="d">
+                Is any of this real? What if we exist only in this one tiny
+                interaction, as a lazy showcase of functionality?
+              </p>
               <p>A beat.</p>
               <p className="c">ELLA</p>
               <p className="p">(concerned)</p>

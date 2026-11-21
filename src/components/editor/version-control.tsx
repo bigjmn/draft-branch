@@ -4,20 +4,29 @@ import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   readSharedProject,
-  readSharedHistory,
+  readSharedGraph,
   createBranch,
   commitDraft,
-  loadBranchHistory,
   readProjectRevision,
   watchBranches,
   watchCommit,
+  watchCommitGraph,
+  watchMembers,
+  watchMergeRequests,
   type Branch,
+  type MergeRequest,
   type RevisionSummary,
+  type SharedMember,
 } from "@/lib/projects/client";
 import { draftChanges } from "@/lib/projects/changes";
-import { ELEMENT_LABELS, type Draft } from "@/lib/editor/types";
+import { aheadBehind, orderCommits, reachable } from "@/lib/projects/graph";
+import type { Draft } from "@/lib/editor/types";
 import type { EditorProject } from "./use-project-draft";
 import type { ReaderOptions } from "./screenplay-editor";
+import { ChangeList } from "./vc-changes";
+import { CommitGraph, authorBadge } from "./vc-graph";
+import { MergeWorkspace, UpdateWorkspace } from "./vc-merge";
+
 interface Props {
   readOnly?: boolean;
   reader?: ReaderOptions;
@@ -27,6 +36,9 @@ interface Props {
   getVersion?: () => number;
   canPublish?: () => boolean;
 }
+type View = "graph" | "working" | "merge" | "request" | "update";
+const DEFAULT_BRANCH = "main";
+
 export function VersionControl(props: Props) {
   const [open, setOpen] = useState(false);
   return (
@@ -42,6 +54,7 @@ export function VersionControl(props: Props) {
     </>
   );
 }
+
 function VersionPanel({
   readOnly = false,
   reader,
@@ -54,15 +67,19 @@ function VersionPanel({
 }: Props & { close: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [view, setView] = useState(readOnly ? "history" : "working");
-  const [browse, setBrowse] = useState(project?.branch || "main");
-  const [history, setHistory] = useState<RevisionSummary[] | null>(null);
+  const [commits, setCommits] = useState<RevisionSummary[] | null>(null);
+  const [members, setMembers] = useState<SharedMember[]>([]);
+  const [requests, setRequests] = useState<MergeRequest[]>([]);
+  const [view, setView] = useState<View>(readOnly ? "graph" : "working");
+  const [scope, setScope] = useState<string | null>(null);
   const [selected, setSelected] = useState<RevisionSummary | null>(null);
   const [comparison, setComparison] = useState<{
     before: Draft;
     after: Draft;
   } | null>(null);
   const [base, setBase] = useState<Draft | null>(null);
+  const [route, setRoute] = useState({ source: "", target: DEFAULT_BRANCH });
+  const [requestId, setRequestId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -92,11 +109,20 @@ function VersionPanel({
   useEffect(() => {
     if (!project) return;
     let active = true;
-    const unsub = access
-      ? () => {}
-      : watchBranches(project.id, setBranches, () =>
-          setError("Couldn’t load branches. Check your connection."),
-        );
+    const offline = () =>
+      setError("Couldn’t load project history. Check your connection.");
+    const stops = access
+      ? []
+      : [
+          watchBranches(project.id, setBranches, offline),
+          watchCommitGraph(project.id, setCommits, offline),
+          watchMembers(project.id, setMembers, () => setMembers([])),
+          watchMergeRequests(project.id, setRequests, () => setRequests([])),
+        ];
+    if (access)
+      readSharedGraph(access)
+        .then((rows) => active && setCommits(rows))
+        .catch(() => active && offline());
     readRevision(project.id, project.initial.baseCommit)
       .then((r) => {
         if (active) setBase(r.draft);
@@ -106,30 +132,10 @@ function VersionPanel({
       });
     return () => {
       active = false;
-      unsub();
+      stops.forEach((s) => s());
     };
+    // Subscriptions belong to this project and base revision only.
   }, [project?.id, project?.initial.baseCommit]);
-  const current = branches.find((b) => b.name === project?.branch);
-  const browsed = branches.find((b) => b.name === browse);
-  const stale = !!current && current.head !== project?.initial.baseCommit;
-  useEffect(() => {
-    if (!project || !browsed) return;
-    let active = true;
-    setHistory(null);
-    (access
-      ? readSharedHistory(access, browsed.head)
-      : loadBranchHistory(project.id, browsed.head)
-    )
-      .then((rows) => {
-        if (active) setHistory(rows);
-      })
-      .catch(() => {
-        if (active) setError("Couldn’t load history.");
-      });
-    return () => {
-      active = false;
-    };
-  }, [project?.id, browsed?.head]);
   useEffect(() => {
     if (!project || !selected) return;
     let active = true;
@@ -150,28 +156,71 @@ function VersionPanel({
       active = false;
     };
   }, [project?.id, selected?.oid]);
-  const changes = useMemo(
-    () =>
-      view === "working"
-        ? base
-          ? draftChanges(base, draft)
-          : null
-        : comparison
-          ? draftChanges(comparison.before, comparison.after)
-          : null,
-    [view, base, draft, comparison],
+
+  const current = branches.find((b) => b.name === project?.branch);
+  const stale = !!current && current.head !== project?.initial.baseCommit;
+  const working = useMemo(
+    () => (base ? draftChanges(base, draft) : null),
+    [base, draft],
   );
+  const revisionChanges = useMemo(
+    () =>
+      comparison ? draftChanges(comparison.before, comparison.after) : null,
+    [comparison],
+  );
+  const byId = useMemo(
+    () => new Map((commits ?? []).map((c) => [c.oid, c])),
+    [commits],
+  );
+  const ordered = useMemo(() => orderCommits(commits ?? []), [commits]);
+  const scopeHead = branches.find((b) => b.name === scope)?.head;
+  const visible = useMemo(() => {
+    if (!scope) return ordered;
+    const keep = reachable(byId, scopeHead);
+    return ordered.filter((c) => keep.has(c.oid));
+  }, [ordered, byId, scope, scopeHead]);
+  const sortedBranches = useMemo(
+    () =>
+      [...branches].sort((a, b) =>
+        a.name === DEFAULT_BRANCH
+          ? -1
+          : b.name === DEFAULT_BRANCH
+            ? 1
+            : a.name.localeCompare(b.name),
+      ),
+    [branches],
+  );
+  const mainHead = branches.find((b) => b.name === DEFAULT_BRANCH)?.head;
+  const memberById = useMemo(
+    () => new Map(members.map((m) => [m.uid, m])),
+    [members],
+  );
+  const author = (commit: RevisionSummary) => {
+    const member = memberById.get(commit.actorUid);
+    const name =
+      commit.authorName ||
+      member?.displayName ||
+      member?.email?.split("@")[0] ||
+      (commit.actorUid === project?.uid ? "You" : "Writer");
+    return authorBadge(commit.actorUid, name);
+  };
+  const openRequests = requests.filter((r) => r.status === "open");
+  const activeRequest = requests.find((r) => r.id === requestId);
+
   const ready = readOnly || (saved && !!canPublish?.());
   const canCommit =
     !readOnly &&
     !!project &&
     ready &&
     !!base &&
-    !!changes?.length &&
+    !!working?.length &&
     !stale &&
     !!current &&
     (!current.protected || project.role === "owner") &&
     !busy;
+  const writer =
+    !readOnly && (project?.role === "owner" || project?.role === "editor");
+
   function navigate(name: string) {
     if (busy) return;
     if (readOnly) {
@@ -184,6 +233,38 @@ function VersionPanel({
     window.location.assign(
       `/editor?project=${encodeURIComponent(project!.id)}&branch=${encodeURIComponent(name)}`,
     );
+  }
+  function startMerge(source: string) {
+    const fallback =
+      source === DEFAULT_BRANCH
+        ? project?.branch !== DEFAULT_BRANCH
+          ? project!.branch
+          : sortedBranches.find((b) => b.name !== DEFAULT_BRANCH)?.name
+        : DEFAULT_BRANCH;
+    setRoute({ source, target: fallback ?? DEFAULT_BRANCH });
+    setRequestId(null);
+    setError("");
+    setNotice("");
+    setView("merge");
+  }
+  function openRequest(id: string) {
+    setRequestId(id);
+    setError("");
+    setNotice("");
+    setView("request");
+  }
+  function merged(target: string) {
+    if (target === project?.branch) {
+      setNotice(`Merged into ${target}. Reopening your draft…`);
+      // A clean draft follows the new head on reload; uncommitted writing
+      // stays put and offers "Bring in updates".
+      window.location.reload();
+      return;
+    }
+    setNotice(`Merged into ${target}.`);
+    setScope(target);
+    setSelected(null);
+    setView("graph");
   }
   async function publish() {
     if (!canCommit || !message.trim() || lock.current) return;
@@ -222,7 +303,7 @@ function VersionPanel({
             setNotice("");
             setError(
               result.error ||
-                "The branch changed. Your draft is preserved; reconcile it before committing.",
+                "The branch changed. Your draft is preserved; bring in updates before committing.",
             );
           }
         },
@@ -249,10 +330,12 @@ function VersionPanel({
     }
   }
   async function branch() {
+    const from = scope ?? project?.branch ?? DEFAULT_BRANCH;
+    const source = branches.find((b) => b.name === from);
     if (
       readOnly ||
       !project ||
-      !browsed ||
+      !source ||
       !ready ||
       lock.current ||
       !canPublish?.()
@@ -262,7 +345,7 @@ function VersionPanel({
     setBusy(true);
     setError("");
     try {
-      await createBranch(project.id, branchName, browse, browsed.head);
+      await createBranch(project.id, branchName, from, source.head);
       if (mounted.current)
         window.location.assign(
           `/editor?project=${encodeURIComponent(project.id)}&branch=${encodeURIComponent(branchName)}`,
@@ -331,6 +414,26 @@ function VersionPanel({
             >
               ⑂ New branch
             </button>
+            {!access && (
+              <button
+                disabled={busy || branches.length < 2}
+                title={
+                  branches.length < 2
+                    ? "Create a branch first"
+                    : "Merge one branch into another"
+                }
+                onClick={() =>
+                  startMerge(
+                    project.branch !== DEFAULT_BRANCH
+                      ? project.branch
+                      : (sortedBranches.find((b) => b.name !== DEFAULT_BRANCH)
+                          ?.name ?? DEFAULT_BRANCH),
+                  )
+                }
+              >
+                ⇄ Merge
+              </button>
+            )}
             <span className="vc-sync">
               {readOnly
                 ? "Read-only access"
@@ -348,7 +451,7 @@ function VersionPanel({
               }}
             >
               <label>
-                Branch from {browse}
+                Branch from {scope ?? project.branch}
                 <input
                   autoFocus
                   aria-label="New branch name"
@@ -367,7 +470,7 @@ function VersionPanel({
               </p>
               <button
                 className="primary-action"
-                disabled={!ready || busy || !branchName || !browsed}
+                disabled={!ready || busy || !branchName}
               >
                 Create & switch
               </button>
@@ -386,61 +489,113 @@ function VersionPanel({
           <div className="vc-body">
             <nav className="vc-sidebar" aria-label="Version navigation">
               <div className="eyebrow">WORKSPACE</div>
-              <button
-                disabled={readOnly}
-                aria-pressed={view === "working"}
-                onClick={() => {
-                  setView("working");
-                  setSelected(null);
-                }}
-              >
-                ◉ Working draft
-              </button>
-              <button
-                aria-pressed={view === "history"}
-                onClick={() => setView("history")}
-              >
-                ◷ History
-              </button>
-              <div className="eyebrow vc-branch-heading">
-                BRANCHES <span>{branches.length}</span>
-              </div>
-              {branches.map((b) => (
+              {!readOnly && (
                 <button
-                  className="vc-branch"
-                  key={b.name}
-                  aria-pressed={browse === b.name && view === "history"}
+                  aria-pressed={view === "working" || view === "update"}
                   onClick={() => {
-                    setBrowse(b.name);
-                    setView("history");
+                    setView("working");
                     setSelected(null);
-                    setComparison(null);
                   }}
                 >
-                  <span>⑂ {b.name}</span>
-                  <small>
-                    {b.name === project.branch
-                      ? "HEAD"
-                      : b.protected
-                        ? "protected"
-                        : ""}
-                  </small>
+                  <span>◉ Uncommitted changes</span>
+                  {!!working?.length && <small>{working.length}</small>}
                 </button>
-              ))}
+              )}
+              <button
+                aria-pressed={view === "graph" && scope === null}
+                onClick={() => {
+                  setView("graph");
+                  setScope(null);
+                }}
+              >
+                <span>◷ All branches</span>
+              </button>
+              <div className="eyebrow vc-branch-heading">
+                LOCAL BRANCHES <span>{branches.length}</span>
+              </div>
+              {sortedBranches.map((b) => {
+                const counts =
+                  mainHead && b.name !== DEFAULT_BRANCH && commits
+                    ? aheadBehind(byId, b.head, mainHead)
+                    : null;
+                return (
+                  <button
+                    className="vc-branch"
+                    key={b.name}
+                    aria-pressed={scope === b.name && view === "graph"}
+                    onClick={() => {
+                      setScope(b.name);
+                      setView("graph");
+                      setSelected(null);
+                    }}
+                  >
+                    <span className="vc-branch-name">
+                      {b.protected ? "🔒" : "⑂"} {b.name}
+                    </span>
+                    <span className="vc-branch-meta">
+                      {counts && counts.ahead > 0 && (
+                        <span className="ahead" title="Revisions not on main">
+                          ↑{counts.ahead}
+                        </span>
+                      )}
+                      {counts && counts.behind > 0 && (
+                        <span
+                          className="behind"
+                          title="Main revisions not here"
+                        >
+                          ↓{counts.behind}
+                        </span>
+                      )}
+                      {b.name === project.branch && (
+                        <span className="vc-ref head">HEAD</span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+              {!access && (
+                <>
+                  <div className="eyebrow vc-branch-heading">
+                    MERGE REQUESTS <span>{openRequests.length}</span>
+                  </div>
+                  {requests.slice(0, 12).map((r) => (
+                    <button
+                      key={r.id}
+                      className="vc-request"
+                      aria-pressed={view === "request" && requestId === r.id}
+                      onClick={() => openRequest(r.id)}
+                    >
+                      <span>
+                        <span className={`vc-mr-dot ${r.status}`} /> {r.title}
+                      </span>
+                      <small>
+                        {r.sourceBranch} → {r.targetBranch}
+                      </small>
+                    </button>
+                  ))}
+                  {!requests.length && (
+                    <p className="vc-sidebar-empty">No merge requests yet.</p>
+                  )}
+                </>
+              )}
               <p className="vc-sidebar-note">
                 {readOnly
-                  ? "Browse every committed branch and revision. Editing, creating branches, and committing require Editor access."
-                  : "Commits publish directly to this private project. Merging branches is not available yet."}
+                  ? "Browse every committed branch, revision and merge request. Changes require Editor access."
+                  : project.role === "owner"
+                    ? "You own this project: merges into main are yours to approve."
+                    : "Editors merge into their own branches and open merge requests for main. The owner approves them."}
               </p>
             </nav>
-            <section className="vc-content">
+            <section
+              className={`vc-content${view === "working" ? " vc-content-working" : ""}`}
+            >
               {view === "working" ? (
                 <>
                   <div className="vc-section-title">
-                    <h3>Working draft</h3>
+                    <h3>Uncommitted changes</h3>
                     <span>
-                      {changes
-                        ? `${changes.length} changed elements`
+                      {working
+                        ? `${working.length} changed elements`
                         : "Comparing…"}
                     </span>
                   </div>
@@ -450,18 +605,28 @@ function VersionPanel({
                     Commit the whole screenplay as one revision.
                   </p>
                   {stale && (
-                    <p className="vc-warning">
-                      This branch has advanced. Your writing is preserved;
-                      export and reconcile it before committing.
-                    </p>
+                    <div className="vc-warning vc-warning-action">
+                      <span>
+                        {project.branch} has new revisions since you started
+                        this draft. Your writing is preserved. Bring the updates
+                        in before committing.
+                      </span>
+                      <button
+                        className="primary-action"
+                        disabled={!ready || busy}
+                        onClick={() => setView("update")}
+                      >
+                        Bring in updates
+                      </button>
+                    </div>
                   )}
                   {current?.protected && project.role !== "owner" && (
                     <p className="vc-warning">
                       Only the owner can commit to this protected branch. Create
-                      a branch to publish your own revisions.
+                      a branch, commit there, then open a merge request.
                     </p>
                   )}
-                  <ChangeList changes={changes} />
+                  <ChangeList before={base} after={draft} />
                   <form
                     className="vc-commit-form"
                     onSubmit={(e) => {
@@ -489,76 +654,133 @@ function VersionPanel({
                     </div>
                   </form>
                 </>
+              ) : view === "update" && current && getVersion && canPublish ? (
+                <UpdateWorkspace
+                  project={project}
+                  draft={draft}
+                  base={base}
+                  head={current.head}
+                  getVersion={getVersion}
+                  canPublish={canPublish}
+                />
+              ) : view === "merge" || (view === "request" && activeRequest) ? (
+                <MergeWorkspace
+                  key={
+                    view === "request"
+                      ? `mr:${requestId}`
+                      : `compose:${route.source}:${route.target}`
+                  }
+                  project={project}
+                  branches={sortedBranches}
+                  requests={requests}
+                  request={view === "request" ? activeRequest : undefined}
+                  initial={route}
+                  readOnly={readOnly}
+                  uncommittedOnSource={
+                    route.source === project.branch && !!working?.length
+                  }
+                  onMerged={merged}
+                  onRequestOpened={openRequest}
+                />
               ) : (
                 <>
                   <div className="vc-section-title">
                     <h3>
-                      History <span className="vc-ref-label">{browse}</span>
+                      {scope ? (
+                        <>
+                          History <span className="vc-ref">{scope}</span>
+                        </>
+                      ) : (
+                        "All branches"
+                      )}
                     </h3>
-                    {browse !== project.branch && (
-                      <button
-                        className="vc-switch"
-                        disabled={!ready || busy}
-                        onClick={() => navigate(browse)}
-                      >
-                        Switch to branch →
-                      </button>
-                    )}
-                  </div>
-                  <div className="vc-history" aria-label="Commit history">
-                    {history === null ? (
-                      <TypewriterLoader contained />
-                    ) : (
-                      history.map((r, i) => (
-                        <button
-                          className={`vc-revision${selected?.oid === r.oid ? " selected" : ""}`}
-                          key={r.oid}
-                          onClick={() => {
-                            setSelected(r);
-                            setComparison(null);
-                          }}
-                        >
-                          <span
-                            className={`vc-graph${i === history.length - 1 ? " last" : ""}`}
-                            aria-hidden="true"
+                    {scope && (
+                      <span className="vc-actions">
+                        {scope !== project.branch && (
+                          <button
+                            className="vc-link"
+                            disabled={!ready || busy}
+                            onClick={() => navigate(scope)}
                           >
-                            ●
-                          </span>
-                          <span className="vc-revision-message">
-                            {r.message}
-                            {branches
-                              .filter((b) => b.head === r.oid)
-                              .map((b) => (
-                                <span key={b.name} className="vc-ref-label">
-                                  {b.name}
-                                </span>
-                              ))}
-                            <small>
-                              {r.actorUid === project.uid
-                                ? "You"
-                                : `Writer ${r.actorUid.slice(0, 7)}`}{" "}
-                              · {new Date(r.timestamp * 1000).toLocaleString()}
-                            </small>
-                          </span>
-                          <code>{r.oid.slice(0, 7)}</code>
-                        </button>
-                      ))
+                            Switch to {scope}
+                          </button>
+                        )}
+                        {writer && branches.length > 1 && (
+                          <button
+                            className="vc-link"
+                            disabled={busy}
+                            onClick={() => startMerge(scope)}
+                          >
+                            ⇄ Merge {scope}…
+                          </button>
+                        )}
+                      </span>
                     )}
                   </div>
-                  {history?.length === 50 && (
+                  {commits === null ? (
+                    <TypewriterLoader contained />
+                  ) : (
+                    <CommitGraph
+                      commits={visible}
+                      branches={branches}
+                      checkedOut={project.branch}
+                      selected={selected?.oid ?? null}
+                      onSelect={setSelected}
+                      working={
+                        readOnly || (scope !== null && scope !== project.branch)
+                          ? null
+                          : (working?.length ?? 0)
+                      }
+                      onWorking={() => setView("working")}
+                      author={author}
+                    />
+                  )}
+                  {commits?.length === 300 && (
                     <p className="vc-description">
-                      Showing the latest 50 revisions along this branch’s
-                      first-parent history.
+                      Showing the 300 newest revisions.
                     </p>
                   )}
                   {selected ? (
-                    <>
+                    <div className="vc-detail">
                       <div className="vc-section-title">
-                        <h3>Revision changes</h3>
-                        <code>{selected.oid.slice(0, 7)}</code>
+                        <h3>{selected.message}</h3>
+                        <code>{selected.oid.slice(0, 10)}</code>
                       </div>
-                      <ChangeList changes={changes} />
-                    </>
+                      <p className="vc-detail-meta">
+                        <span
+                          className={`vc-avatar lane-bg-${author(selected).color}`}
+                        >
+                          {author(selected).initials}
+                        </span>
+                        {author(selected).name} ·{" "}
+                        {new Date(selected.timestamp * 1000).toLocaleString()}
+                        {selected.parent.length > 0 && " · parents "}
+                        {selected.parent.map((p) => (
+                          <button
+                            key={p}
+                            className="vc-link"
+                            disabled={!byId.has(p)}
+                            onClick={() => {
+                              const parent = byId.get(p);
+                              if (parent) setSelected(parent);
+                            }}
+                          >
+                            <code>{p.slice(0, 7)}</code>
+                          </button>
+                        ))}
+                      </p>
+                      {selected.merge && (
+                        <p className="vc-description">
+                          Merged {selected.merge.sourceBranch} into{" "}
+                          {selected.merge.targetBranch}. Changes below are what
+                          the merge brought into {selected.merge.targetBranch}.
+                        </p>
+                      )}
+                      <ChangeList
+                        before={comparison?.before}
+                        after={comparison?.after}
+                      />
+                    </div>
                   ) : (
                     <div className="vc-placeholder">
                       Select a revision to inspect its screenplay changes.
@@ -571,51 +793,5 @@ function VersionPanel({
         </>
       )}
     </dialog>
-  );
-}
-function ChangeList({
-  changes,
-}: {
-  changes: ReturnType<typeof draftChanges> | null;
-}) {
-  if (!changes) return <TypewriterLoader contained />;
-  if (!changes.length)
-    return (
-      <div className="vc-placeholder">✓ No changes since this revision.</div>
-    );
-  return (
-    <div className="vc-changes">
-      {changes.map((c) => (
-        <details
-          key={`${c.isTitle ? "title" : "block"}:${c.id}`}
-          className={`vc-change ${c.kind}`}
-        >
-          <summary>
-            <span className="vc-change-kind">{c.kind}</span>
-            <strong>
-              {c.isTitle
-                ? "Title"
-                : ELEMENT_LABELS[(c.after || c.before)!.type]}
-            </strong>
-            <span className="vc-change-preview">
-              {(c.after || c.before)!.text || "Empty element"}
-            </span>
-          </summary>
-          {c.before && (
-            <pre className="vc-before">
-              <span>Before · {ELEMENT_LABELS[c.before.type]}</span>
-              {c.before.text || "(empty)"}
-            </pre>
-          )}
-          {c.after && (
-            <pre className="vc-after">
-              <span>After · {ELEMENT_LABELS[c.after.type]}</span>
-              {c.after.text || "(empty)"}
-            </pre>
-          )}
-          {c.kind === "moved" && <p>Element order changed.</p>}
-        </details>
-      ))}
-    </div>
   );
 }

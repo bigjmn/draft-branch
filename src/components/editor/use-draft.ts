@@ -43,7 +43,9 @@ export function useDraft() {
       window.history.replaceState(window.history.state, "", url);
     }
     try {
-      const raw = fresh.current ? null : readStoredValue(localStorage, STORAGE_KEY);
+      const raw = fresh.current
+        ? null
+        : readStoredValue(localStorage, STORAGE_KEY);
       if (fresh.current) initial = createBlankDraft();
       else if (raw) initial = parseDraft(raw);
       setStatus("saved");

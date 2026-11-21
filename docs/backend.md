@@ -4,9 +4,9 @@
 
 The backend foundation is implemented in `functions/src/projects`, with browser API helpers in `src/lib/projects/client.ts`. It uses the existing Firebase Authentication setup. The dashboard and project editor now call these APIs, including cloud autosave. Anonymous trial drafts remain local. No production deployment has been performed.
 
-Implemented: private project creation, membership and invitations, per-user/per-branch cloud drafts, immutable upload tickets, actual Git commits, branches, revision loading, access revocation, and asynchronous operation status. The existing user-profile Auth trigger is preserved.
+Implemented: private project creation, membership and invitations, per-user/per-branch cloud drafts, immutable upload tickets, actual Git commits, branches, revision loading, access revocation, asynchronous operation status, screenplay-aware three-way merges with conflict resolution, two-parent merge commits, and merge requests with owner approval for protected branches. The existing user-profile Auth trigger is preserved.
 
-Not implemented: invitation email delivery/acceptance page, automatic pulling/rebasing, diffs, merge requests/merges, Git smart HTTP, project deletion, storage cleanup, quotas, and production monitoring. One project currently contains one screenplay. No end-to-end encryption is used; server administrators can access stored content.
+Not implemented: word-level merging, cherry-pick/revert, branch deletion, Git smart HTTP, project deletion, storage cleanup, quotas, and production monitoring. One project currently contains one screenplay. No end-to-end encryption is used; server administrators can access stored content.
 
 ## Architecture
 
@@ -32,12 +32,13 @@ Firestore
   projects/{projectId}                    title, ownerUid, visibility=private
     members/{uid}                        owner | editor | reviewer
     branches/{branchName}                 head SHA, protected flag
-    commits/{commitSHA}                   blob/tree/parent SHAs, message, author UID
+    commits/{commitSHA}                   blob/tree/parent SHAs, message, author UID/name, merge info
+    mergeRequests/{requestId}             source/target branch, title, notes, author, open|merged|closed
     workingDrafts/{uid}/branches/{name}   snapshotPath, baseCommit, version, hash
     uploads/{uploadId}                    ticket, expiry, expectedVersion, status
     operations/{operationId}              frozen commit request and result
     invitations/{invitationId}            email, role, expiry, status
-    requests/{requestIdHash}              branch-creation replay record
+    requests/{requestIdHash}              branch-creation and merge replay records
 
 Cloud Storage
   projects/{projectId}/uploads/{uid}/{uploadId}
@@ -56,33 +57,54 @@ Snapshot v1 is `{ schemaVersion: 1, title, blocks: [{ id, type, text }] }`. It p
 5. **Alice invites Bob as an editor.** `inviteProjectMember` creates a pending invitation scoped to Bob's email, valid for seven days. It returns project and invitation IDs; no email is sent yet. Bob signs in and verifies that same email, then calls `acceptProjectInvitation`. The server checks the invitation and inviter's current owner role, creates Bob's membership and project-list entry, and consumes the invitation. Existing members keep their existing role.
 6. **Bob creates `alternate-ending`.** `createBranch` checks his editor membership and the expected source head. It creates an unprotected branch pointing to Alice's current commit. It does not copy the screenplay or its history. `loadProjectDraft` loads the committed screenplay for Bob because he has no private draft on that branch yet.
 7. **Bob adds a fourth scene and commits.** His upload advances only his own working draft on `alternate-ending`. The commit worker creates a new commit whose parent is Alice's revision and moves only Bob's branch. Alice can read Bob's committed revision as a project member; his uncommitted draft is private. Editors cannot commit directly to protected `main`.
-8. **Alice brings Bob's scene into main.** This is the next implementation phase: screenplay-aware diff, merge request, conflict resolution, and an atomic merge commit. This backend does not merge or silently copy Bob's branch into main. Both histories and the original main remain intact.
-
-Resulting history before merging:
+8. **Bob asks to bring his scene into main.** Editors cannot merge into protected `main`, so Bob calls `openMergeRequest` (one open request per source/target pair). `previewProjectMerge` returns the merge base and the three screenplays so any member can see the result and the conflicts.
+9. **Alice approves.** If both of them edited the same element, Alice picks a resolution for each conflict, then calls `mergeProjectBranches` with the expected heads of both branches. The server reruns the same merge with her resolutions, refuses if anything is unresolved or either branch moved, writes a commit whose parents are `[main head, branch head]`, advances `main`, and marks open requests for that pair `merged`, all in one transaction. Retrying with the same request ID returns the same merge commit.
 
 ```text
-initial ── first three scenes   ← main
-                         └── fourth scene   ← alternate-ending
+initial ── first three scenes ── merge   ← main
+                         └── fourth scene ┘   ← alternate-ending
 ```
+
+### Merge algorithm
+
+`functions/src/projects/merge.ts` is the single implementation. The browser re-exports it from `src/lib/projects/merge.ts` so both sides report identical conflict IDs. Elements are matched by stable block ID against the best common ancestor (`mergeBase`, computed from commit parents in one Firestore read).
+
+| Situation                                                   | Result                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------- |
+| One side changed an element (text or type), title, or order | Take that change                                              |
+| Both made the same change                                   | Take it once                                                  |
+| Both changed one element differently                        | `content` conflict: target, source, keep both, or custom text |
+| One deleted an element the other edited                     | `delete` conflict: keep the edit or delete                    |
+| Both changed the title                                      | `title` conflict: target, source, or custom text              |
+| Both inserted or rearranged material in the same gap        | `order` conflict: whose material comes first (both are kept)  |
+| Both moved one element to different places                  | `move` conflict: target's or source's position                |
+
+Order is merged separately from content: anchors are elements neither side moved or deleted (a longest-increasing-subsequence over shared IDs). Between anchors, the side that changed the gap wins. Conflict IDs (`title`, `block:<id>`, `order:<anchor>`, `move:<id>`) do not depend on the chosen resolutions.
+
+A clean working draft (its bytes hash to its base commit's Git blob) follows the branch head in `loadDraft`, so writers without uncommitted changes never see a stale draft after someone else commits or merges. Drafts with uncommitted writing keep their base. The editor's **Bring in updates** flow runs the same merge (base commit, your draft, newest head) in the browser, lets the writer resolve conflicts, and saves the result as a working draft on the new head. Nothing is committed.
 
 ## Endpoints and event contracts
 
 Use Firebase's `httpsCallable` client, which supplies the signed-in user's token; no server credentials belong in the browser. `src/lib/projects/client.ts` exposes typed wrappers and Firestore listeners.
 
-| Callable                | Input (in addition to authentication)                                    | Result                           |
-| ----------------------- | ------------------------------------------------------------------------ | -------------------------------- |
-| createProject           | title, requestId                                                         | projectId, branchId, head        |
-| loadProjectDraft        | projectId, branchId                                                      | draft, version, baseCommit, head |
-| beginDraftUpload        | projectId, branchId, baseCommit, expectedVersion, contentHash, requestId | uploadId, path, status           |
-| commitDraft             | projectId, branchId, expectedHead, draftVersion, message, requestId      | operationId, status              |
-| createBranch            | projectId, name, sourceBranch, expectedHead, requestId                   | branchId, head                   |
-| readProjectRevision     | projectId, commitId                                                      | draft, commitId, parent          |
-| inviteProjectMember     | projectId, email, role=editor/reviewer, requestId                        | projectId, invitationId, status  |
-| acceptProjectInvitation | projectId, invitationId                                                  | projectId, role                  |
-| removeProjectMember     | projectId, uid                                                           | removed                          |
-| revokeProjectInvitation | projectId, invitationId                                                  | revoked                          |
+| Callable                | Input (in addition to authentication)                                                                                            | Result                                                 |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| createProject           | title, requestId                                                                                                                 | projectId, branchId, head                              |
+| loadProjectDraft        | projectId, branchId                                                                                                              | draft, version, baseCommit, head                       |
+| beginDraftUpload        | projectId, branchId, baseCommit, expectedVersion, contentHash, requestId                                                         | uploadId, path, status                                 |
+| commitDraft             | projectId, branchId, expectedHead, draftVersion, message, requestId                                                              | operationId, status                                    |
+| createBranch            | projectId, name, sourceBranch, expectedHead, requestId                                                                           | branchId, head                                         |
+| readProjectRevision     | projectId, commitId                                                                                                              | draft, commitId, parent                                |
+| previewProjectMerge     | projectId, sourceBranch, targetBranch                                                                                            | heads, baseCommit, upToDate, base/target/source drafts |
+| mergeProjectBranches    | projectId, sourceBranch, targetBranch, expectedSourceHead, expectedTargetHead, resolutions, message?, mergeRequestId?, requestId | commitId, branchId                                     |
+| openMergeRequest        | projectId, sourceBranch, targetBranch, title, description?, requestId                                                            | mergeRequestId, status                                 |
+| closeMergeRequest       | projectId, mergeRequestId (author or owner)                                                                                      | closed                                                 |
+| inviteProjectMember     | projectId, email, role=editor/reviewer, requestId                                                                                | projectId, invitationId, status                        |
+| acceptProjectInvitation | projectId, invitationId                                                                                                          | projectId, role                                        |
+| removeProjectMember     | projectId, uid                                                                                                                   | removed                                                |
+| revokeProjectInvitation | projectId, invitationId                                                                                                          | revoked                                                |
 
-Branch names start with a lowercase letter and accept lowercase letters, digits, and single interior hyphens, at most 64 characters. `main` is protected on creation; there is currently no protection-toggle or ownership-transfer API.
+Branch names start with a lowercase letter and accept lowercase letters, digits, and single interior hyphens, at most 64 characters. `main` is protected on creation; there is currently no protection-toggle or ownership-transfer API. Only the owner commits or merges into a protected branch; owners and editors merge into unprotected branches. Members (including readers) can preview merges and read merge requests.
 
 Storage trigger: `finalizeProjectDraft`, bucket object finalization. Only ticket upload paths are processed; generated draft/Git objects are ignored.
 
@@ -147,7 +169,7 @@ Smoke-test a real upload through the callable → Storage finalize → accepted 
 2. Wire debounced saves to upload tickets, show pending/accepted/conflict states, and retain local recovery during offline failures. Serialize saves per draft and refresh versions after commits.
 3. Add commit/history controls and explicit remote-update handling. Never discard a stale draft just to move its base commit.
 4. Add invitation acceptance and verified-email UX, member management, and optional invitation email delivery.
-5. Build stable scene/document identities, screenplay-aware diff and three-way merge, then merge requests and owner-approved main updates.
+5. Add word-level merging inside an element, merge-request comments anchored to elements, cherry-pick/revert, and branch deletion.
 6. Add quotas/rate controls, monitoring, a stuck-job reconciliation process, tested backups, and cleanup of expired uploads/unreferenced objects. Do not delete Git objects solely by age; preserve every reachable history.
 7. Add multi-document projects, exports, and an optional standard Git remote/export adapter.
 
@@ -163,13 +185,16 @@ The dashboard and editor share persisted light/dark themes; dark is the default.
 
 Verified locally with Firebase emulators: account sign-in redirect, private project creation and editor navigation, autosave and reload, owned/shared project listings, editor membership, live revocation and direct-link denial, and both theme palettes. Firebase backend deployment is still required for production cloud flows.
 
-
 ## Version control workspace
 
-Open **Version control** in the editor header. Its branch sidebar, first-parent history, and revision details follow a SourceTree-style layout. Working draft compares stable screenplay element IDs with the base commit, including title, text, type, additions, removals, and order changes. Select a history row to compare it with its parent. History currently loads up to 50 revisions along the selected branch.
+Open **Version control** in the editor header. The layout follows GitComet:
 
-Commit revision publishes the entire screenplay through `commitDraft` and watches the operation until the worker confirms completion. The editor then reloads the accepted draft version/base. Publishing and branch switching wait for acknowledged cloud saves; protected-main permissions and stale-head checks are also enforced on the server. Commits publish directly to private cloud storage, so separate push/pull controls are not exposed.
+- **Sidebar:** the working draft ("Uncommitted changes" with a count), "All branches", local branches (protected ones have a lock), ahead/behind counts relative to `main` (↑/↓), the checked-out `HEAD`, and the 12 newest merge requests.
+- **Commit graph:** a table of the 300 newest commits across all branches, with columns for branch labels, coloured graph lanes (merge commits are hollow rings), message, author (coloured initials avatar), date, and short revision ID. The top row is the uncommitted working draft. Selecting a branch scopes the graph to commits reachable from it.
+- **Revision details:** select a row to see its author, parents (clickable), and element-level changes against its first parent. For a merge commit, these are what the merge brought into the target.
 
-New branch starts from the selected branch's committed head and opens `/editor?project=<id>&branch=<name>`. Uncommitted writing remains in the original branch's private draft. Recovery storage is isolated by account, project, and branch. Switching branches remounts the editor to prevent stale canvas state. Merging, automatic reconciliation of remote updates, and per-element staging are not implemented. Guest drafts show a sign-in explanation instead of cloud operations.
+Lane layout and ordering live in `src/lib/projects/graph.ts`. Members get a live Firestore listener. Guest invitation readers fetch the same commit metadata through `readSharedProject` with `graph: true`, which never includes screenplay text. Author names come from the commit's `authorName`, then the member profile, then "Writer". Commits made before `authorName` existed fall back to member profiles.
 
-Styling is externalized in `src/styles/version-control.css` and uses the shared light/dark theme tokens.
+Merging is under **⇄ Merge**, or **Merge \<branch\>…** when a branch is selected. It previews the result, lists every conflict as a card showing the scene it belongs to, and offers bulk "use all from" choices. Owners see **Approve & merge** for `main`. Editors see **Open merge request** instead, plus a shortcut to bring `main` into their branch so they can settle conflicts themselves. Merge requests show their notes, author, and status. Their author or the owner can close them. Merging into the checked-out branch reloads the editor.
+
+Commit revision publishes the entire screenplay through `commitDraft` and watches the operation until the worker confirms completion. Branch switching waits for acknowledged cloud saves. New branch starts from the selected (or checked-out) branch's committed head. Styling is in `src/styles/version-control.css`, including the lane palette for both themes.

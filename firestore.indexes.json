@@ -3,6 +3,11 @@
   "fieldOverrides": [
     { "collectionGroup": "operations", "fieldPath": "message", "indexes": [] },
     { "collectionGroup": "operations", "fieldPath": "actor", "indexes": [] },
-    { "collectionGroup": "commits", "fieldPath": "message", "indexes": [] }
+    { "collectionGroup": "commits", "fieldPath": "message", "indexes": [] },
+    {
+      "collectionGroup": "mergeRequests",
+      "fieldPath": "description",
+      "indexes": []
+    }
   ]
 }

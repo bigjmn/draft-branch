@@ -4,7 +4,7 @@ A screenplay editor for film and television, with a long-term goal of bringing G
 
 The writing experience should feel familiar to users of Final Draft or WriterDuet. The collaboration model should let writers create alternate versions, publish meaningful revisions, review changes, and merge work without needing a command line.
 
-**Current stage:** a working Next.js/TypeScript/Tailwind editor with Firebase sign-in, plus an implemented backend foundation for private projects, cloud drafts, real Git commits, branches, and invitations. The dashboard and project editor are connected to the backend APIs, including private membership gates and cloud autosave. Anonymous trials remain browser-local. Firebase backend deployment is still required for production cloud flows. Merges are still planned.
+**Current stage:** a working Next.js/TypeScript/Tailwind editor with Firebase sign-in, plus an implemented backend foundation for private projects, cloud drafts, real Git commits, branches, and invitations. The dashboard and project editor are connected to the backend APIs, including private membership gates and cloud autosave. Anonymous trials remain browser-local. Branches merge through a screenplay-aware three-way merge with conflict resolution; only the project owner can merge into protected `main`, so editors open merge requests for the owner to approve. Firebase backend deployment is still required for production cloud flows.
 
 See [Backend implementation and collaboration walkthrough](docs/backend.md) for APIs, schemas, authorization, emulator tests, deployment, and the two-writer workflow.
 
@@ -389,7 +389,7 @@ Future server endpoints require a Node-capable host, a supported deployment adap
 - Guest trial drafts use the legacy browser-local key. Cloud project drafts and recovery are scoped to account/project/branch; migrating a guest draft into a project is not implemented.
 - The `/editor` gate is client-side only (the app is statically exported). It is a navigation guard, not access control; the new backend enforces authorization through callable APIs and Firestore/Storage rules independently of that gate.
 - No password reset or email verification yet.
-- Real Git objects, commits, and branches are implemented in the backend, but there are no project/history UI controls, history comparison, or merging yet.
+- Merges compare whole elements. Two edits to the same element are a conflict even when they touch different words; there is no word-level merge yet. There is also no cherry-pick, revert, or branch deletion.
 - No import UI, including JSON restore, Fountain import, or FDX import.
 - No multiple-document/project management.
 - No character autocomplete, rich-text marks, title-page editor, or dual dialogue.
@@ -608,11 +608,9 @@ Keep the central acceptance test in view: two writers should be able to work ind
 
 Choose **Export → Final Draft (.fdx)** to download the current working draft. The file includes all seven screenplay element types, multiline text, a title page, 12-point Courier, and US Letter layout settings. XML special characters are escaped; characters forbidden by XML 1.0 are replaced with the replacement character. Theme colors do not affect export. Pagination is recalculated by the receiving app. Git history, collaboration metadata, and revision marks are not included. XML validity and serialization are tested; opening in the Final Draft desktop application has not yet been verified. FDX import is not implemented.
 
-
 ### Local Firebase configuration
 
 Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_FIREBASE_API_KEY` to your Firebase web API key. Set the same variable in the hosting build environment before deploying. Local `.env` files are ignored by Git; the example contains no real credentials. The browser key is still public in the compiled frontend: Firebase Authentication, Security Rules, and appropriate API-key restrictions protect the project. Never put service-account credentials or server API secrets in a `NEXT_PUBLIC_` variable.
-
 
 ### Brand and local-data compatibility
 
@@ -622,3 +620,14 @@ New drafts, project recovery copies, and theme preferences use the `draftbranch.
 ## Email access sharing
 
 Owners can invite Readers and Editors by email, manage roles, and revoke access. Invitation links support account-free reading; contributing requires accepting with a verified account matching the invited email. See [sharing setup and permissions](docs/sharing.md) for SMTP configuration, deployment, and security behavior.
+
+
+### Writer profiles
+
+Open **Profile** by clicking your name in the dashboard. `/profile` opens your own profile; `/profile?user=UID` is the shareable view. Registered users can edit their name, job, company, short bio, and picture. Profile fields and avatars are public to anyone with the link; private projects are never listed. Featured projects is an empty placeholder until public projects are supported.
+
+Profiles live separately from private account records in `profiles/{uid}`. Firestore rules allow only that registered user to write a validated profile. Pictures are decoded in the browser, center-cropped to 512×512 PNG, and uploaded to immutable `avatars/{uid}/{id}.png` objects. Storage rules restrict uploads to the owner, PNG content type, and 2 MiB. Original uploads accept JPG/PNG/WebP up to 5 MiB. No email is included in the public profile.
+
+Deploy both Firestore and Storage rules before using profiles in production: `firebase deploy --only firestore:rules,storage`. Deploy the updated frontend through the usual hosting workflow. Profile styles are in `src/styles/profile.css`.
+
+FDX imports discard whitespace-only Action paragraphs used as layout spacers, while preserving nonempty text and other element types. Already-imported drafts are unchanged; reimport the source to apply this correction.

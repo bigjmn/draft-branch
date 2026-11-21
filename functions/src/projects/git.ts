@@ -9,6 +9,7 @@ import {
   type Actor,
   type Snapshot,
   MAX_DRAFT_BYTES,
+  authorName,
   parseSnapshot,
   serializeSnapshot,
 } from "./model";
@@ -20,6 +21,11 @@ export interface GitRevision {
   blob: string;
   parent: string[];
 }
+/** The Git blob id of exact bytes: sha1("blob <length>\0" + bytes). */
+export const blobId = (bytes: Buffer) =>
+  createHash("sha1")
+    .update(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes]))
+    .digest("hex");
 export const objectPath = (projectId: string, oid: string) =>
   `projects/${projectId}/git/objects/${oid.slice(0, 2)}/${oid.slice(2)}`;
 
@@ -53,7 +59,7 @@ export class GitService {
         ],
       });
       const author = {
-        name: actor.name.replace(/[\n\r<>]/g, "").slice(0, 100) || "Writer",
+        name: authorName(actor),
         email: `${createHash("sha256").update(actor.uid).digest("hex").slice(0, 24)}@users.draftbranch.invalid`,
         timestamp,
         timezoneOffset: 0,

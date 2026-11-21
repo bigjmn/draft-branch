@@ -1,3 +1,4 @@
+import { sameScreenplayElement } from "./element-equality";
 import type { Draft, ScriptBlock } from "@/lib/editor/types";
 export interface DraftChange {
   id: string;
@@ -28,7 +29,7 @@ export function draftChanges(before: Draft, after: Draft): DraftChange[] {
   for (const b of after.blocks) {
     const a = old.get(b.id);
     if (!a) changes.push({ id: b.id, kind: "added", after: b });
-    else if (a.text !== b.text || a.type !== b.type)
+    else if (!sameScreenplayElement(a, b))
       changes.push({ id: b.id, kind: "modified", before: a, after: b });
     else if (oldOrder.get(b.id) !== newOrder.get(b.id))
       changes.push({ id: b.id, kind: "moved", before: a, after: b });

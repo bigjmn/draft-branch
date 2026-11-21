@@ -6,7 +6,13 @@ import {
   assertSucceeds,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  Timestamp,
+  serverTimestamp,
+} from "firebase/firestore";
 import { ref, uploadBytes, getBytes } from "firebase/storage";
 let env: RulesTestEnvironment;
 before(async () => {
@@ -146,4 +152,131 @@ test("mail queue, token-bearing emulator inbox and invitation quotas are never c
       );
     }
   }
+});
+test("merge requests are readable by members and written only by the server", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), "projects/rules-project/mergeRequests/mr1"),
+      { status: "open", authorUid: "editor" },
+    );
+  });
+  for (const uid of ["owner", "editor", "reviewer"])
+    await assertSucceeds(
+      getDoc(
+        doc(user(uid).firestore(), "projects/rules-project/mergeRequests/mr1"),
+      ),
+    );
+  await assertFails(
+    getDoc(
+      doc(
+        user("outsider").firestore(),
+        "projects/rules-project/mergeRequests/mr1",
+      ),
+    ),
+  );
+  await assertFails(
+    setDoc(
+      doc(
+        user("owner").firestore(),
+        "projects/rules-project/mergeRequests/mr1",
+      ),
+      { status: "merged" },
+    ),
+  );
+});
+
+test("profiles are publicly readable but writable only by their registered owner", async () => {
+  const profile = {
+    name: "Writer",
+    job: "Screenwriter",
+    company: "Studio",
+    bio: "Hello.",
+    avatarId: "",
+    updatedAt: serverTimestamp(),
+  };
+  const path = "profiles/profile-owner";
+  await assertSucceeds(
+    setDoc(doc(user("profile-owner").firestore(), path), profile),
+  );
+  await assertSucceeds(
+    getDoc(doc(env.unauthenticatedContext().firestore(), path)),
+  );
+  await assertFails(
+    setDoc(doc(user("outsider").firestore(), path), {
+      ...profile,
+      name: "Impersonator",
+    }),
+  );
+  await assertFails(
+    setDoc(doc(env.unauthenticatedContext().firestore(), path), profile),
+  );
+  await assertFails(
+    setDoc(
+      doc(
+        env
+          .authenticatedContext("guest-profile", {
+            firebase: { sign_in_provider: "anonymous", identities: {} },
+          })
+          .firestore(),
+        "profiles/guest-profile",
+      ),
+      profile,
+    ),
+  );
+  await assertFails(
+    setDoc(doc(user("profile-owner").firestore(), path), {
+      ...profile,
+      bio: "x".repeat(501),
+    }),
+  );
+  await assertFails(
+    setDoc(doc(user("profile-owner").firestore(), path), {
+      ...profile,
+      role: "admin",
+    }),
+  );
+  await assertFails(
+    setDoc(doc(user("profile-owner").firestore(), path), {
+      ...profile,
+      avatarId: "../someone-else",
+    }),
+  );
+});
+
+test("avatars permit owner image uploads and public reads, not other writers or unsafe types", async () => {
+  const path = "avatars/avatar-owner/12345678-1234-1234-1234-123456789abc.png";
+  const bytes = new Uint8Array([137, 80, 78, 71]);
+  await assertSucceeds(
+    uploadBytes(ref(user("avatar-owner").storage(), path), bytes, {
+      contentType: "image/png",
+    }),
+  );
+  await assertSucceeds(
+    getBytes(ref(env.unauthenticatedContext().storage(), path)),
+  );
+  await assertFails(
+    uploadBytes(ref(user("outsider").storage(), path), bytes, {
+      contentType: "image/png",
+    }),
+  );
+  await assertFails(
+    uploadBytes(
+      ref(
+        user("avatar-owner").storage(),
+        "avatars/avatar-owner/22345678-1234-1234-1234-123456789abc.png",
+      ),
+      bytes,
+      { contentType: "image/svg+xml" },
+    ),
+  );
+  await assertFails(
+    uploadBytes(
+      ref(
+        user("avatar-owner").storage(),
+        "avatars/avatar-owner/32345678-1234-1234-1234-123456789abc.png",
+      ),
+      new Uint8Array(2 * 1024 * 1024 + 1),
+      { contentType: "image/png" },
+    ),
+  );
 });

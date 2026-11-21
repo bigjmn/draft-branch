@@ -30,6 +30,7 @@ Validation before finishing a change: `npm run typecheck && npm test && npm run 
 **Pagination** reads page dimensions from computed CSS (`screenplay.css`/`theme.css`), not from constants in code. It moves whole blocks between pages, puts no gap between dialogue and parenthetical blocks, and restores the selection after moving DOM nodes. Elements that split across pages and dialogue continuations are not implemented yet.
 
 **Persistence and compatibility:**
+
 - Drafts are stored in localStorage under `STORAGE_KEY = "draftbranch.editor.v1"`. Legacy keys are read through `src/lib/storage.ts`. Preserve the stored `{ title, blocks: [{ id, type, text }] }` format. It must stay compatible with drafts saved by the original prototype, and `tests/draft.test.ts` checks that.
 - `parseDraft` rejects malformed drafts, empty drafts, unknown element types, and duplicate IDs instead of dropping data. If loading fails, `useDraft` loads the sample draft and shows a recovery banner. Note that the first edit after that still triggers a save that overwrites the unreadable stored draft, because nothing blocks it.
 - Element types come from `ELEMENT_LABELS` in `src/lib/editor/types.ts`. Keyboard flow lives in the same file, in `NEXT_ELEMENT` (Enter) and `TAB_CYCLES` (Tab). When adding a type, update those, plus `toFountain` and the CSS for `[data-type=...]`. The README's "Using the editor" tables document the keyboard flow, so keep them in sync.
@@ -38,6 +39,7 @@ Validation before finishing a change: `npm run typecheck && npm test && npm run 
 **Authentication:** the Firebase project is `draftbranch`, set up through `.firebaserc` and `firebase.json`. The client SDK is initialized lazily in `src/lib/firebase/client.ts`, so call `firebaseAuth()` only in effects or event handlers, never during render or prerender. `AuthProvider` in the root layout exposes `useAuth()`, which returns `{ user, loading }`. `/` is the landing page (`AuthPanel`), and `/editor` wraps the editor in `RequireAuth`. All auth runs in the browser, because the hosted Site is a static export, which can't use cookies, proxy or server actions. Map Firebase error codes to messages in `auth-errors.ts`. "Try the Editor" uses anonymous sign-in and navigates to `/editor?new`; `useDraft` treats `?new` as "start from `createBlankDraft()`" and strips it from the URL (the flag is held in a ref because Strict Mode runs the effect twice). The landing page sends returning account holders straight to `/editor`, but not anonymous guests.
 
 **Firebase backend (Blaze plan):**
+
 - **Firestore:** `(default)` database in `nam5`. Rules in `firestore.rules`: clients can read only `users/{their uid}` and write nothing.
 - **Storage:** default bucket `draftbranch.firebasestorage.app` in `us-central1`. Rules in `storage.rules`: each user owns `users/{uid}/**`, with a 20 MB limit per file.
 - **Functions:** live in `functions/`, a separate npm package (TypeScript, built to `lib/`, excluded from the root tsconfig).
@@ -45,7 +47,7 @@ Validation before finishing a change: `npm run typecheck && npm test && npm run 
   - It is 1st gen because the 2nd-gen `beforeUserCreated` needs Identity Platform. 1st-gen functions don't support Node 24, so the runtime is `nodejs22`.
 - **Deploying:** `npx firebase-tools deploy --only firestore,storage,functions`. The CLI isn't a project dependency.
 
-Drafts aren't tied to accounts yet, and Git sync isn't implemented. The "Main draft" and "LOCAL" labels in the interface are display only.
+**Version control and merging:** see `docs/backend.md`. The three-way merge in `functions/src/projects/merge.ts` must stay dependency-free: the browser imports the same file through `src/lib/projects/merge.ts`, and the server reruns it with the client's chosen resolutions, so conflict IDs must stay deterministic. Only the owner commits or merges into protected branches (`assertMergeInto`). The graph layout is pure and tested in `src/lib/projects/graph.ts`.
 
 ## Styling conventions
 

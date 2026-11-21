@@ -94,6 +94,24 @@ export function assertRole(role: unknown, allowed: Role[]): void {
 export function assertPublish(role: unknown, branch: Branch): void {
   assertRole(role, branch.protected ? ["owner"] : ["owner", "editor"]);
 }
+/** Protected branches (main) only change through the owner, including merges. */
+export function assertMergeInto(role: unknown, branch: Branch): void {
+  if (branch.protected && role !== "owner")
+    fail(
+      "permission-denied",
+      "Only the project owner can approve merges into a protected branch.",
+    );
+  assertPublish(role, branch);
+}
+/** Name shown as a commit author: profile name, else the email's local part. */
+export function authorName(actor: Actor): string {
+  const name = actor.name
+    .replace(/[\n\r<>]/g, "")
+    .trim()
+    .slice(0, 100);
+  if (name && name !== "Writer") return name;
+  return actor.email?.split("@")[0]?.slice(0, 100) || "Writer";
+}
 export function parseSnapshot(value: unknown): Snapshot {
   const input = record(value);
   if (input.schemaVersion !== undefined && input.schemaVersion !== 1)

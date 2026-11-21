@@ -13,6 +13,7 @@ import {
   type ElementType,
   type ScriptBlock,
 } from "@/lib/editor/types";
+import { FdxImportButton } from "./fdx-import";
 import { EditorCanvas, type CanvasHandle } from "./editor-canvas";
 import { EditorDialog, type DialogKind } from "./editor-dialog";
 import { Sidebar } from "./sidebar";
@@ -131,6 +132,7 @@ function EditorView({
   const [zoom, setZoom] = useState("fit");
   const [focus, setFocus] = useState(false);
   const [dialog, setDialog] = useState<DialogKind>(null);
+  const [importGeneration, setImportGeneration] = useState(0);
   const [toast, setToast] = useState("");
   const hydratedTitle = useRef(false);
 
@@ -244,6 +246,17 @@ function EditorView({
                       ? "Saved to cloud"
                       : "Saved locally"}
             </span>
+            {!readOnly && (
+              <FdxImportButton
+                onImport={(next) => {
+                  update(next);
+                  if (title.current) title.current.textContent = next.title;
+                  setSelectedId(null);
+                  setImportGeneration((value) => value + 1);
+                  setToast("Screenplay imported into your working draft.");
+                }}
+              />
+            )}
             <button className="button" onClick={() => setDialog("export")}>
               Export <span>↗</span>
             </button>
@@ -327,6 +340,7 @@ function EditorView({
             <span>US LETTER · 8.5 × 11 IN</span>
           </div>
           <EditorCanvas
+            key={importGeneration}
             readOnly={readOnly}
             ref={canvas}
             initialBlocks={draft.blocks}

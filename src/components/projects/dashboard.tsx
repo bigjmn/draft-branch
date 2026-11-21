@@ -1,6 +1,8 @@
 "use client";
 import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 
+import { FdxFileInput } from "@/components/editor/fdx-import";
+import type { Draft } from "@/lib/editor/types";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
@@ -36,6 +38,7 @@ function ProjectList({ name }: { name: string }) {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [title, setTitle] = useState("");
+  const [imported, setImported] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [createError, setCreateError] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
@@ -57,10 +60,17 @@ function ProjectList({ name }: { name: string }) {
     setBusy(true);
     setCreateError("");
     const value = title.trim();
-    if (request.current?.title !== value)
-      request.current = { title: value, id: crypto.randomUUID() };
+    if (request.current?.title !== JSON.stringify({ value, imported }))
+      request.current = {
+        title: JSON.stringify({ value, imported }),
+        id: crypto.randomUUID(),
+      };
     try {
-      const project = await createProject(value, request.current!.id);
+      const project = await createProject(
+        value,
+        request.current!.id,
+        imported ?? undefined,
+      );
       router.push(projectHref(project.projectId));
     } catch {
       setCreateError(
@@ -85,7 +95,13 @@ function ProjectList({ name }: { name: string }) {
         </Link>
         <div className="workspace-account">
           <ThemeToggle />
-          <span className="workspace-name">{name}</span>
+          <Link
+            href="/profile"
+            className="workspace-name"
+            aria-label="Your profile"
+          >
+            {name}
+          </Link>
           <button
             onClick={() =>
               signOut(firebaseAuth()).catch(() =>
@@ -213,8 +229,8 @@ function ProjectList({ name }: { name: string }) {
           <div className="eyebrow">A NEW BEGINNING</div>
           <h2>Create a project</h2>
           <p>
-            Start with a blank screenplay. Only you can access it until you
-            invite someone.
+            Start with a blank screenplay or import an FDX file. Only you can
+            access it until you invite someone.
           </p>
           <label htmlFor="project-title">Project title</label>
           <input
@@ -226,6 +242,13 @@ function ProjectList({ name }: { name: string }) {
             disabled={busy}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled screenplay"
+          />
+          <FdxFileInput
+            disabled={busy}
+            onChange={(draft) => {
+              setImported(draft);
+              if (draft) setTitle(draft.title);
+            }}
           />
           <p role="alert" className="form-error">
             {createError}

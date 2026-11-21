@@ -6,7 +6,8 @@ import {
   type Transaction,
 } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
-import { GitService } from "./git";
+import { GitService, blobId } from "./git";
+import { type Resolution, MAX_RESOLUTION_TEXT, mergeDrafts } from "./merge";
 import type { ObjectStore } from "./objects";
 import {
   type Actor,
@@ -14,9 +15,11 @@ import {
   type CommitJob,
   type Role,
   MAX_DRAFT_BYTES,
+  assertMergeInto,
   assertPublish,
   assertRequest,
   assertRole,
+  authorName,
   blankSnapshot,
   branchId,
   fail,
@@ -33,6 +36,8 @@ import {
 
 const now = () => FieldValue.serverTimestamp();
 const MEMBERS: Role[] = ["owner", "editor", "reviewer"];
+/** Commits shown in the version-control graph (newest first). */
+export const GRAPH_LIMIT = 300;
 const WRITERS: Role[] = ["owner", "editor"];
 
 export class ProjectService {
@@ -87,7 +92,15 @@ export class ProjectService {
     const data = record(input),
       title = text(data.title, "project title");
     const pid = requestKey(actor, data.requestId),
-      fingerprint = hash(JSON.stringify({ title }));
+      snapshot =
+        data.draft === undefined
+          ? blankSnapshot(title)
+          : parseSnapshot({ ...record(data.draft), title }),
+      fingerprint = hash(
+        JSON.stringify(
+          data.draft === undefined ? { title } : { title, snapshot },
+        ),
+      );
     const existing = await this.project(pid).get();
     if (existing.exists) {
       assertRequest(existing.data(), fingerprint);
@@ -100,7 +113,7 @@ export class ProjectService {
     const timestamp = Math.floor(Date.now() / 1000);
     const initial = await this.git.commit(
       pid,
-      blankSnapshot(title),
+      snapshot,
       [],
       "Create project",
       actor,
@@ -130,6 +143,8 @@ export class ProjectService {
       tx.create(this.member(pid, actor.uid), {
         uid: actor.uid,
         role: "owner",
+        displayName: authorName(actor),
+        ...(actor.email ? { email: actor.email } : {}),
         joinedAt: now(),
       });
       tx.set(this.db.doc(`users/${actor.uid}/projects/${pid}`), {
@@ -149,6 +164,7 @@ export class ProjectService {
       tx.create(this.project(pid).collection("commits").doc(initial.oid), {
         ...initial,
         actorUid: actor.uid,
+        authorName: authorName(actor),
         message: "Create project",
         timestamp,
         createdAt: now(),
@@ -404,6 +420,7 @@ export class ProjectService {
         tx.set(this.project(pid).collection("commits").doc(revision.oid), {
           ...revision,
           actorUid: job.actor.uid,
+          authorName: authorName(job.actor),
           message: job.message,
           timestamp: job.timestamp,
           operationId,
@@ -629,6 +646,24 @@ export class ProjectService {
       });
     const metadata = await check();
     if (!includeDraft) return metadata;
+    if (data.graph === true) {
+      // Commit metadata only: messages, authors, parents. No screenplay text.
+      const rows = await this.project(pid)
+        .collection("commits")
+        .orderBy("timestamp", "desc")
+        .limit(GRAPH_LIMIT)
+        .get();
+      const commits = rows.docs.map((item) => ({
+        oid: item.id,
+        message: item.get("message"),
+        actorUid: item.get("actorUid"),
+        authorName: item.get("authorName") ?? null,
+        timestamp: item.get("timestamp"),
+        parent: item.get("parent"),
+      }));
+      await check();
+      return { ...metadata, commits };
+    }
     const branchName = branchId(data.branchId ?? "main");
     const branch = await this.branch(pid, branchName).get();
     if (!branch.exists) fail("not-found", "Branch not found.");
@@ -656,6 +691,7 @@ export class ProjectService {
           oid: cursor,
           message: row.message,
           actorUid: row.actorUid,
+          authorName: row.authorName ?? null,
           timestamp: row.timestamp,
           parent: row.parent,
         });
@@ -813,6 +849,25 @@ export class ProjectService {
       const bytes = await this.objects.get(saved.snapshotPath);
       if (hash(bytes) !== saved.contentHash)
         fail("data-loss", "Draft snapshot integrity mismatch.");
+      // A draft identical to its base commit holds no uncommitted writing, so
+      // it can follow the branch after someone else commits or merges. Drafts
+      // with real changes keep their base and go through "Bring in updates".
+      if (saved.baseCommit !== head) {
+        const base = await this.project(pid)
+          .collection("commits")
+          .doc(saved.baseCommit)
+          .get();
+        if (base.exists && base.data()!.blob === blobId(bytes)) {
+          const latest = await this.snapshotAt(pid, head);
+          await this.checkAccess(pid, actor);
+          return {
+            draft: latest,
+            version: saved.version as number,
+            baseCommit: head,
+            head,
+          };
+        }
+      }
       await this.checkAccess(pid, actor);
       return {
         draft: parseSnapshot(JSON.parse(bytes.toString())),
@@ -845,4 +900,363 @@ export class ProjectService {
     await this.checkAccess(pid, actor);
     return { draft, commitId, parent: revision.data()!.parent as string[] };
   }
+
+  private async snapshotAt(pid: string, commitId: string) {
+    const revision = await this.project(pid)
+      .collection("commits")
+      .doc(commitId)
+      .get();
+    if (!revision.exists) fail("data-loss", "A revision is missing.");
+    return this.git.readSnapshot(pid, revision.data()!.blob);
+  }
+
+  /** Best common ancestor: a common ancestor that no other common ancestor
+   * descends from (latest wins in criss-cross histories). */
+  async mergeBase(pid: string, a: string, b: string): Promise<string> {
+    const rows = await this.project(pid)
+      .collection("commits")
+      .select("parent", "timestamp")
+      .get();
+    const graph = new Map(
+      rows.docs.map((d) => [
+        d.id,
+        {
+          parent: (d.get("parent") ?? []) as string[],
+          timestamp: Number(d.get("timestamp") ?? 0),
+        },
+      ]),
+    );
+    const ancestors = (start: string[]) => {
+      const seen = new Set<string>();
+      const stack = [...start];
+      while (stack.length) {
+        const oid = stack.pop()!;
+        if (seen.has(oid)) continue;
+        seen.add(oid);
+        stack.push(...(graph.get(oid)?.parent ?? []));
+      }
+      return seen;
+    };
+    const fromB = ancestors([b]);
+    const common = [...ancestors([a])].filter((oid) => fromB.has(oid));
+    if (!common.length)
+      fail("failed-precondition", "These branches share no history.");
+    const dominated = ancestors(
+      common.flatMap((oid) => graph.get(oid)?.parent ?? []),
+    );
+    const best = common.filter((oid) => !dominated.has(oid));
+    best.sort(
+      (x, y) =>
+        (graph.get(y)?.timestamp ?? 0) - (graph.get(x)?.timestamp ?? 0) ||
+        (x < y ? -1 : 1),
+    );
+    return best[0];
+  }
+
+  private async mergeInputs(pid: string, source: string, target: string) {
+    if (source === target)
+      fail("invalid-argument", "Choose two different branches to merge.");
+    const [sourceDoc, targetDoc] = await Promise.all([
+      this.branch(pid, source).get(),
+      this.branch(pid, target).get(),
+    ]);
+    if (!sourceDoc.exists || !targetDoc.exists)
+      fail("not-found", "Branch not found.");
+    const sourceHead = sourceDoc.data()!.head as string,
+      targetHead = targetDoc.data()!.head as string;
+    const baseCommit = await this.mergeBase(pid, targetHead, sourceHead);
+    return {
+      sourceHead,
+      targetHead,
+      baseCommit,
+      targetBranch: targetDoc.data() as Branch,
+    };
+  }
+
+  /** Everything the browser needs to show conflicts with the shared algorithm. */
+  async previewMerge(actor: Actor, input: unknown) {
+    const data = record(input),
+      pid = id(data.projectId);
+    const source = branchId(data.sourceBranch),
+      target = branchId(data.targetBranch);
+    await this.checkAccess(pid, actor);
+    const { sourceHead, targetHead, baseCommit } = await this.mergeInputs(
+      pid,
+      source,
+      target,
+    );
+    const [base, ours, theirs] = await Promise.all([
+      this.snapshotAt(pid, baseCommit),
+      this.snapshotAt(pid, targetHead),
+      this.snapshotAt(pid, sourceHead),
+    ]);
+    await this.checkAccess(pid, actor);
+    return {
+      sourceHead,
+      targetHead,
+      baseCommit,
+      upToDate: baseCommit === sourceHead,
+      fastForward: baseCommit === targetHead,
+      base,
+      target: ours,
+      source: theirs,
+    };
+  }
+
+  /** Creates a two-parent merge commit on the target branch. Merging into a
+   * protected branch (main) is the owner's approval. */
+  async mergeBranches(actor: Actor, input: unknown) {
+    const data = record(input),
+      pid = id(data.projectId);
+    const source = branchId(data.sourceBranch),
+      target = branchId(data.targetBranch);
+    const expectedSourceHead = oid(data.expectedSourceHead),
+      expectedTargetHead = oid(data.expectedTargetHead);
+    const resolutions = parseResolutions(data.resolutions);
+    const mergeRequestId =
+      data.mergeRequestId === undefined
+        ? null
+        : id(data.mergeRequestId, "merge request id");
+    const message =
+      data.message === undefined
+        ? `Merge ${source} into ${target}`
+        : text(data.message, "merge message", 2000);
+    const key = requestKey(actor, data.requestId);
+    const fingerprint = hash(
+      JSON.stringify({
+        source,
+        target,
+        expectedSourceHead,
+        expectedTargetHead,
+        resolutions,
+        mergeRequestId,
+        message,
+      }),
+    );
+    const requestRef = this.project(pid).collection("requests").doc(key);
+    const prior = await requestRef.get();
+    if (prior.exists) {
+      assertRequest(prior.data(), fingerprint);
+      return prior.data()!.result as { commitId: string; branchId: string };
+    }
+    const { role } = await this.checkAccess(pid, actor, WRITERS);
+    const inputs = await this.mergeInputs(pid, source, target);
+    assertMergeInto(role, inputs.targetBranch);
+    if (
+      inputs.sourceHead !== expectedSourceHead ||
+      inputs.targetHead !== expectedTargetHead
+    )
+      fail("aborted", "A branch changed. Review the merge again.");
+    if (inputs.baseCommit === inputs.sourceHead)
+      fail(
+        "failed-precondition",
+        `${target} already contains every revision on ${source}.`,
+      );
+    const [base, ours, theirs] = await Promise.all([
+      this.snapshotAt(pid, inputs.baseCommit),
+      this.snapshotAt(pid, inputs.targetHead),
+      this.snapshotAt(pid, inputs.sourceHead),
+    ]);
+    const merged = mergeDrafts(base, ours, theirs, resolutions);
+    if (merged.unresolved.length)
+      fail(
+        "failed-precondition",
+        `Resolve ${merged.unresolved.length} conflict${merged.unresolved.length === 1 ? "" : "s"} before merging.`,
+      );
+    const snapshot = parseSnapshot({ ...merged.draft, schemaVersion: 1 });
+    const timestamp = Math.floor(Date.now() / 1000);
+    const revision = await this.git.commit(
+      pid,
+      snapshot,
+      [inputs.targetHead, inputs.sourceHead],
+      message,
+      actor,
+      timestamp,
+    );
+    const result = { commitId: revision.oid, branchId: target };
+    const requests = this.project(pid).collection("mergeRequests");
+    return this.db.runTransaction(async (tx) => {
+      const [again, member, sourceDoc, targetDoc] = await tx.getAll(
+        requestRef,
+        this.member(pid, actor.uid),
+        this.branch(pid, source),
+        this.branch(pid, target),
+      );
+      if (again.exists) {
+        assertRequest(again.data(), fingerprint);
+        return again.data()!.result as typeof result;
+      }
+      const open = await tx.get(
+        requests
+          .where("sourceBranch", "==", source)
+          .where("targetBranch", "==", target)
+          .where("status", "==", "open"),
+      );
+      const named = mergeRequestId
+        ? await tx.get(requests.doc(mergeRequestId))
+        : null;
+      if (!sourceDoc.exists || !targetDoc.exists)
+        fail("not-found", "Branch no longer exists.");
+      assertRole(member.data()?.role, WRITERS);
+      assertMergeInto(member.data()?.role, targetDoc.data() as Branch);
+      if (
+        sourceDoc.data()!.head !== expectedSourceHead ||
+        targetDoc.data()!.head !== expectedTargetHead
+      )
+        fail("aborted", "A branch changed. Review the merge again.");
+      if (
+        named &&
+        (!named.exists ||
+          named.data()!.status !== "open" ||
+          named.data()!.sourceBranch !== source ||
+          named.data()!.targetBranch !== target)
+      )
+        fail("failed-precondition", "This merge request is no longer open.");
+      tx.set(this.project(pid).collection("commits").doc(revision.oid), {
+        ...revision,
+        actorUid: actor.uid,
+        authorName: authorName(actor),
+        message,
+        timestamp,
+        merge: {
+          sourceBranch: source,
+          targetBranch: target,
+          ...(mergeRequestId ? { mergeRequestId } : {}),
+        },
+        createdAt: now(),
+      });
+      tx.update(this.branch(pid, target), {
+        head: revision.oid,
+        updatedAt: now(),
+      });
+      tx.update(this.project(pid), { updatedAt: now() });
+      for (const request of open.docs)
+        tx.update(request.ref, {
+          status: "merged",
+          mergedCommit: revision.oid,
+          mergedBy: actor.uid,
+          mergedByName: authorName(actor),
+          mergedAt: now(),
+        });
+      tx.create(requestRef, {
+        actorUid: actor.uid,
+        fingerprint,
+        result,
+        createdAt: now(),
+      });
+      return result;
+    });
+  }
+
+  /** Editors propose merges into protected branches; the owner approves them by merging. */
+  async openMergeRequest(actor: Actor, input: unknown) {
+    const data = record(input),
+      pid = id(data.projectId);
+    const source = branchId(data.sourceBranch),
+      target = branchId(data.targetBranch);
+    if (source === target)
+      fail("invalid-argument", "Choose two different branches to merge.");
+    const title = text(data.title, "merge request title", 200);
+    const description =
+      data.description === undefined || data.description === ""
+        ? ""
+        : text(data.description, "description", 4000);
+    const requestId = requestKey(actor, data.requestId);
+    const fingerprint = hash(
+      JSON.stringify({ source, target, title, description }),
+    );
+    const ref = this.project(pid).collection("mergeRequests").doc(requestId);
+    return this.db.runTransaction(async (tx) => {
+      await this.access(tx, pid, actor, WRITERS);
+      const [existing, sourceDoc, targetDoc] = await tx.getAll(
+        ref,
+        this.branch(pid, source),
+        this.branch(pid, target),
+      );
+      if (existing.exists) {
+        assertRequest(existing.data(), fingerprint);
+        return { mergeRequestId: requestId, status: existing.data()!.status };
+      }
+      const duplicate = await tx.get(
+        this.project(pid)
+          .collection("mergeRequests")
+          .where("sourceBranch", "==", source)
+          .where("targetBranch", "==", target)
+          .where("status", "==", "open"),
+      );
+      if (!duplicate.empty)
+        fail(
+          "already-exists",
+          "An open merge request already exists for these branches.",
+        );
+      if (!sourceDoc.exists || !targetDoc.exists)
+        fail("not-found", "Branch not found.");
+      tx.create(ref, {
+        title,
+        description,
+        sourceBranch: source,
+        targetBranch: target,
+        sourceHead: sourceDoc.data()!.head,
+        targetHead: targetDoc.data()!.head,
+        authorUid: actor.uid,
+        authorName: authorName(actor),
+        status: "open",
+        fingerprint,
+        createdAt: now(),
+        updatedAt: now(),
+      });
+      return { mergeRequestId: requestId, status: "open" };
+    });
+  }
+
+  async closeMergeRequest(actor: Actor, input: unknown) {
+    const data = record(input),
+      pid = id(data.projectId);
+    const ref = this.project(pid)
+      .collection("mergeRequests")
+      .doc(id(data.mergeRequestId, "merge request id"));
+    await this.db.runTransaction(async (tx) => {
+      const { role } = await this.access(tx, pid, actor);
+      const request = await tx.get(ref);
+      if (!request.exists) fail("not-found", "Merge request not found.");
+      if (role !== "owner" && request.data()!.authorUid !== actor.uid)
+        fail(
+          "permission-denied",
+          "Only the author or the owner can close this request.",
+        );
+      if (request.data()!.status === "open")
+        tx.update(ref, {
+          status: "closed",
+          closedBy: actor.uid,
+          closedByName: authorName(actor),
+          updatedAt: now(),
+        });
+    });
+    return { closed: true };
+  }
+}
+
+const RESOLUTION_KEY = /^(title|(block|order|move):[A-Za-z0-9_-]{1,128})$/;
+function parseResolutions(value: unknown): Record<string, Resolution> {
+  if (value === undefined) return {};
+  const input = record(value);
+  const entries = Object.entries(input);
+  if (entries.length > 2000) fail("invalid-argument", "Too many resolutions.");
+  const result: Record<string, Resolution> = {};
+  for (const [key, choice] of entries) {
+    if (!RESOLUTION_KEY.test(key))
+      fail("invalid-argument", "Invalid conflict id.");
+    if (choice === "target" || choice === "source" || choice === "both")
+      result[key] = choice;
+    else {
+      const custom = record(choice);
+      if (
+        typeof custom.text !== "string" ||
+        custom.text.length > MAX_RESOLUTION_TEXT
+      )
+        fail("invalid-argument", "Invalid conflict resolution.");
+      result[key] = { text: custom.text };
+    }
+  }
+  return result;
 }
