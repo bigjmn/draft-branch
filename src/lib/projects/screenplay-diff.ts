@@ -1,17 +1,26 @@
 import { sameScreenplayElement } from "./element-equality";
+import { wordDiff, type TextSegment } from "./word-diff";
 import type { Draft, ScriptBlock } from "@/lib/editor/types";
 export interface DiffRow {
-  kind: "context" | "added" | "removed";
+  /** "changed": the same element with edited text, shown once with the
+   * edits marked inline (block is the new version, oldBlock the old). */
+  kind: "context" | "added" | "removed" | "changed";
   block: ScriptBlock;
   oldNumber?: number;
   newNumber?: number;
   title?: boolean;
-  /** Original text when a context row differs only in display-equivalent casing. */
+  /** Original text when a context row differs only in display-equivalent
+   * casing, and the old version of a changed row. */
   oldBlock?: ScriptBlock;
+  /** For changed rows: the text split into kept, removed and added runs. */
+  segments?: TextSegment[];
 }
 /** Align stable IDs with an O(n log n) longest increasing subsequence.
  * Moved elements appear once at their old position and once at their new position.
- * Context rows retain oldBlock when raw text differs but rendering is equivalent. */
+ * Context rows retain oldBlock when raw text differs but rendering is equivalent.
+ * An element whose type is unchanged but whose text was edited becomes one
+ * "changed" row with word-level segments, unless the edit is a near rewrite,
+ * which stays a removed row plus an added row. */
 export function screenplayDiff(before: Draft, after: Draft): DiffRow[] {
   const rows: DiffRow[] = [];
   if (before.title !== after.title) {
@@ -87,8 +96,20 @@ export function screenplayDiff(before: Draft, after: Draft): DiffRow[] {
         newNumber: j + 1,
       });
     else {
-      rows.push({ kind: "removed", block: a, oldNumber: i + 1 });
-      rows.push({ kind: "added", block: b, newNumber: j + 1 });
+      const segments = a.type === b.type ? wordDiff(a.text, b.text) : null;
+      if (segments)
+        rows.push({
+          kind: "changed",
+          block: b,
+          oldBlock: a,
+          segments,
+          oldNumber: i + 1,
+          newNumber: j + 1,
+        });
+      else {
+        rows.push({ kind: "removed", block: a, oldNumber: i + 1 });
+        rows.push({ kind: "added", block: b, newNumber: j + 1 });
+      }
     }
     i++;
     j++;

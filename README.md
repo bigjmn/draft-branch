@@ -393,6 +393,8 @@ SITES_STATIC_EXPORT=1 npm run build
 
 `next.config.ts` enables `output: "export"` only when that flag is set. Build a normal production version again before using `npm start`; the static export is served as files instead.
 
+The Downloads page (`/downloads`) offers the desktop installers it finds in `public/downloads/` when the site is built. That folder is git-ignored and is filled by `npm run release` in `desktop/` (see `desktop/README.md`); without it the page shows both downloads as not available yet. The installers are over 100 MB each and are exported into `out/` with the rest of `public/`.
+
 A build alone does not publish the Site. The Sites workflow synchronizes the source revision, packages the matching export, and deploys a saved version. Keep credentials out of source files and preserve the existing private audience.
 
 Future server endpoints require a Node-capable host, a supported deployment adapter, or a separately hosted API. A browser client can call a separately hosted Firebase/API backend while the frontend remains statically hosted.

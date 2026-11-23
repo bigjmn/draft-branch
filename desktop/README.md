@@ -56,6 +56,21 @@ Build each platform's installer on that platform. Add `--x64`, `--arm64` or (mac
 
 There is no automatic update yet (`publish: null` in `electron-builder.yml`).
 
+### Release: the installers the website offers
+
+```sh
+npm run release
+```
+
+Run it on a Mac. It builds the app once, then makes both installers:
+
+- the Mac disk image, one file for Intel and Apple silicon (`DraftBranch-<version>-mac-universal.dmg`), signed and notarized when the certificate and credentials described below are in place;
+- the Windows installer for 64-bit PCs (`DraftBranch-<version>-win-x64.exe`), which the Mac can build too.
+
+Each one is copied to `../public/downloads/`, replacing the previous release's file. The site's Downloads page (`../src/app/downloads/page.tsx`) reads that folder when the site is built and turns each button into a link for the installer it finds, so rebuild and deploy the site after a release. The folder is git-ignored, because the installers are too large for the repository.
+
+A Mac build that is not signed and notarized is built but not copied, because other Macs refuse to open it. `npm run release -- --allow-unsigned` copies it anyway, for trying the page on your own machine, and `--mac` or `--win` builds only one of the two. The run ends with a summary, and its full output is saved in `release/release.log`.
+
 ### Signing, for builds other people will download
 
 Out of the box the installers are unsigned. That is fine on the computer that built them and not for a download link.
@@ -97,6 +112,7 @@ To change the icon, replace those files and keep their sizes; `electron-builder.
 | `npm test`          | Store, sync and backend-compatibility tests                     |
 | `npm run format`    | Format with the repository's Prettier                           |
 | `npm run dist:*`    | Build installers (see above)                                    |
+| `npm run release`   | Build the installers the website offers (see above)             |
 
 ## Where projects are kept
 

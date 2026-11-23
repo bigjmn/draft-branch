@@ -35,3 +35,6 @@ credentials.json
 
 # Generated from the installed PDF.js version
 /public/pdfjs/
+
+# Desktop installers, copied here by `npm run release` in desktop/
+/public/downloads/

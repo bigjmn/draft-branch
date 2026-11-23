@@ -4,6 +4,7 @@ import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 import { BetaBadge } from "@/components/ui/beta-badge";
 import { signInAnonymously } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AuthPanel, type AuthMode } from "@/components/auth/auth-panel";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -82,6 +83,7 @@ export function Landing() {
           <a className="nav-section" href="#faq">
             FAQ
           </a>
+          <Link href="/downloads">Downloads</Link>
           <a href="#account" onClick={() => setMode("signin")}>
             Sign in
           </a>

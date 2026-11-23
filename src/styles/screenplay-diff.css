@@ -79,6 +79,41 @@
 [data-theme="dark"] .script-diff-removed .script-diff-sign {
   color: #ffa198;
 }
+.script-diff-changed {
+  background: #ca8a0414;
+}
+.script-diff-changed .script-diff-sign {
+  color: #a16207;
+}
+.script-diff-ins {
+  background: #15803d33;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 2px;
+}
+.script-diff-del {
+  background: #dc262629;
+  color: inherit;
+  text-decoration: line-through;
+  text-decoration-color: #c43838;
+  border-radius: 2px;
+}
+.script-diff-del + .script-diff-ins {
+  margin-left: 3px;
+}
+[data-theme="dark"] .script-diff-changed {
+  background: #d2992214;
+}
+[data-theme="dark"] .script-diff-changed .script-diff-sign {
+  color: #e3b341;
+}
+[data-theme="dark"] .script-diff-ins {
+  background: #2ea04359;
+}
+[data-theme="dark"] .script-diff-del {
+  background: #f8514947;
+  text-decoration-color: #ffa198;
+}
 .script-diff-title-label {
   display: block;
   font: 10px var(--font-ui);

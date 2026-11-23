@@ -14,7 +14,9 @@ const draft = (blocks: ScriptBlock[], title = "Pilot"): Draft => ({
 function reconstruct(before: Draft, after: Draft) {
   const rows = screenplayDiff(before, after).filter((r) => !r.title);
   assert.deepEqual(
-    rows.filter((r) => r.kind !== "added").map((r) => r.block),
+    rows
+      .filter((r) => r.kind !== "added")
+      .map((r) => (r.kind === "changed" ? r.oldBlock : r.block)),
     before.blocks,
   );
   assert.deepEqual(
@@ -150,9 +152,88 @@ test("prose casing, whitespace, element types and actual words still count as ch
       draft([{ id: "same", type, text: oldText }]),
       draft([{ id: "same", type, text: newText }]),
     );
-    assert.deepEqual(
-      rows.map((r) => r.kind),
-      ["removed", "added"],
-    );
+    // Shown as an in-place edit (or removed + added): never as unchanged.
+    assert.ok(rows.length > 0 && rows.every((r) => r.kind !== "context"));
   }
+});
+
+test("text added to a speech is one edited row, with only the new words marked", () => {
+  const cue: ScriptBlock = { id: "c", type: "character", text: "MAYA" };
+  const line = (text: string): ScriptBlock => ({
+    id: "d",
+    type: "dialogue",
+    text,
+  });
+  const before = draft([cue, line("I told you we should have left early.")]);
+  const after = draft([
+    cue,
+    line("I told you we should have left early. Nobody listens to me."),
+  ]);
+  reconstruct(before, after);
+  const rows = screenplayDiff(before, after);
+  assert.deepEqual(
+    rows.map((r) => r.kind),
+    ["context", "changed"],
+  );
+  assert.deepEqual(rows[1].segments, [
+    { kind: "same", text: "I told you we should have left early." },
+    { kind: "added", text: " Nobody listens to me." },
+  ]);
+  assert.deepEqual([rows[1].oldNumber, rows[1].newNumber], [2, 2]);
+});
+test("edits in the middle of a speech mark removed and added words in place", () => {
+  const before = draft([
+    { id: "d", type: "dialogue", text: "We leave at dawn, not before." },
+  ]);
+  const after = draft([
+    { id: "d", type: "dialogue", text: "We leave at noon, not before." },
+  ]);
+  const [row] = screenplayDiff(before, after);
+  assert.equal(row.kind, "changed");
+  assert.deepEqual(row.segments, [
+    { kind: "same", text: "We leave at " },
+    { kind: "removed", text: "dawn" },
+    { kind: "added", text: "noon" },
+    { kind: "same", text: ", not before." },
+  ]);
+});
+test("a rewrite or a change of element type stays a removed row plus an added row", () => {
+  const rewrite = screenplayDiff(
+    draft([{ id: "d", type: "dialogue", text: "Get out of my house." }]),
+    draft([{ id: "d", type: "dialogue", text: "Fine, stay for dinner then." }]),
+  );
+  assert.deepEqual(
+    rewrite.map((r) => r.kind),
+    ["removed", "added"],
+  );
+  const retyped = screenplayDiff(
+    draft([{ id: "d", type: "dialogue", text: "She runs." }]),
+    draft([{ id: "d", type: "action", text: "She runs away." }]),
+  );
+  assert.deepEqual(
+    retyped.map((r) => r.kind),
+    ["removed", "added"],
+  );
+});
+test("filling in an empty element or emptying one is shown as an edit", () => {
+  const filled = screenplayDiff(
+    draft([{ id: "d", type: "dialogue", text: "" }]),
+    draft([{ id: "d", type: "dialogue", text: "Hello?" }]),
+  );
+  assert.equal(filled[0].kind, "changed");
+  assert.deepEqual(filled[0].segments, [{ kind: "added", text: "Hello?" }]);
+});
+test("edited rows count as changes when folding unchanged context", () => {
+  const blocks = Array.from({ length: 20 }, (_, i) =>
+    block(String(i), `Line ${i} of the scene.`),
+  );
+  const after = blocks.map((b) =>
+    b.id === "10" ? { ...b, text: "Line 10 of the long scene." } : b,
+  );
+  const sections = foldDiff(screenplayDiff(draft(blocks), draft(after)));
+  const shown = sections
+    .filter((s) => s.kind === "rows")
+    .flatMap((s) => s.rows);
+  assert.ok(shown.some((r) => r.kind === "changed"));
+  assert.equal(sections.filter((s) => s.kind === "fold").length, 2);
 });

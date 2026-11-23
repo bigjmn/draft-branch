@@ -8,6 +8,12 @@ import {
 } from "@/lib/projects/screenplay-diff";
 import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 
+const SIGN: Record<DiffRow["kind"], { sign: string; label: string }> = {
+  context: { sign: " ", label: "Unchanged" },
+  added: { sign: "+", label: "Added" },
+  removed: { sign: "−", label: "Removed" },
+  changed: { sign: "±", label: "Edited" },
+};
 function Row({ row }: { row: DiffRow }) {
   return (
     <div className={`script-diff-row script-diff-${row.kind}`}>
@@ -23,17 +29,8 @@ function Row({ row }: { row: DiffRow }) {
       >
         {row.newNumber ?? ""}
       </span>
-      <span
-        className="script-diff-sign"
-        aria-label={
-          row.kind === "context"
-            ? "Unchanged"
-            : row.kind === "added"
-              ? "Added"
-              : "Removed"
-        }
-      >
-        {row.kind === "added" ? "+" : row.kind === "removed" ? "−" : " "}
+      <span className="script-diff-sign" aria-label={SIGN[row.kind].label}>
+        {SIGN[row.kind].sign}
       </span>
       <div className="script-diff-content">
         {row.title && <span className="script-diff-title-label">Title</span>}
@@ -41,7 +38,21 @@ function Row({ row }: { row: DiffRow }) {
           className={`block${row.title ? " script-diff-title" : ""}`}
           data-type={row.block.type}
         >
-          {row.block.text || "\u00a0"}
+          {row.segments
+            ? row.segments.map((segment, i) =>
+                segment.kind === "added" ? (
+                  <ins key={i} className="script-diff-ins">
+                    {segment.text}
+                  </ins>
+                ) : segment.kind === "removed" ? (
+                  <del key={i} className="script-diff-del">
+                    {segment.text}
+                  </del>
+                ) : (
+                  <span key={i}>{segment.text}</span>
+                ),
+              )
+            : row.block.text || "\u00a0"}
         </div>
       </div>
     </div>
@@ -75,6 +86,7 @@ export function ScreenplayDiff({
       <div className="script-diff-legend">
         <span>− Removed</span>
         <span>+ Added</span>
+        <span>± Edited in place</span>
         <span>Gutter numbers identify screenplay elements</span>
       </div>
       <div
