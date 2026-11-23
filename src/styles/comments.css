@@ -1,0 +1,134 @@
+.project-comments {
+  position: fixed;
+  right: 18px;
+  top: 90px;
+  bottom: 20px;
+  width: min(360px, calc(100vw - 36px));
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 16px 50px #0004;
+  overflow: hidden;
+}
+.comments-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.comments-heading h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.comments-heading p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.comments-heading button {
+  font-size: 26px;
+  padding: 4px;
+}
+.comments-filter {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  padding: 12px 18px;
+}
+.comments-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 18px;
+}
+.comments-empty {
+  color: var(--muted);
+  padding: 24px 0;
+  font-size: 13px;
+}
+.comment {
+  border: 1px solid var(--line);
+  padding: 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.comment strong {
+  font-size: 12px;
+}
+.comment p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+  line-height: 1.6;
+}
+.comment small {
+  color: var(--muted);
+}
+.comment.is-resolved {
+  opacity: 0.65;
+}
+.comment-quote,
+.comment-form blockquote {
+  display: block;
+  text-align: left;
+  margin: 10px 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--green);
+  color: var(--muted);
+  background: var(--color-workspace);
+  font: 12px/1.5 var(--font-screenplay);
+  max-height: 100px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  width: 100%;
+}
+.comment-actions {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--green);
+}
+.comment-form {
+  border-top: 1px solid var(--line);
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  font-size: 12px;
+}
+.comment-form textarea {
+  background: var(--color-workspace);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  resize: vertical;
+  max-height: 160px;
+}
+.project-comments > .form-error {
+  padding: 0 16px 12px;
+}
+.project-card-wrap {
+  min-width: 0;
+}
+.project-card-wrap .project-card {
+  display: block;
+}
+.delete-project-trigger {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+}
+.danger-action {
+  background: #b42332;
+  color: white;
+  border-radius: 6px;
+  padding: 10px 16px;
+}

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Sign in to DraftBranch</title>
+    <!-- The web app's own tab icon, so the browser tab reads as DraftBranch. -->
+    <link rel="icon" type="image/svg+xml" href="../../../src/app/icon.svg" />
+  </head>
+  <body>
+    <main id="card">
+      <div id="brand"><span>d.</span> DraftBranch</div>
+      <h1 id="title">Sign in to DraftBranch for desktop</h1>
+      <p id="message">
+        Continue with your Google account. You’ll go straight back to the app.
+      </p>
+      <button id="continue" type="button">Continue with Google</button>
+      <p id="error" role="alert"></p>
+    </main>
+    <script type="module" src="/auth-helper/main.ts"></script>
+  </body>
+</html>

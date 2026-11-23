@@ -12,6 +12,8 @@ import {
   setDoc,
   Timestamp,
   serverTimestamp,
+  updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { ref, uploadBytes, getBytes } from "firebase/storage";
 let env: RulesTestEnvironment;
@@ -278,5 +280,70 @@ test("avatars permit owner image uploads and public reads, not other writers or 
       new Uint8Array(2 * 1024 * 1024 + 1),
       { contentType: "image/png" },
     ),
+  );
+});
+
+test("only owners create and resolve anchored comments; members can read", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), "projects/rules-project/branches/main"),
+      { name: "main" },
+    );
+  });
+  const path = "projects/rules-project/comments/owner-note";
+  const note = {
+    authorUid: "owner",
+    authorName: "Owner",
+    branch: "main",
+    blockId: "scene-1",
+    quote: "INT. HOUSE - DAY",
+    text: "Tighten this scene.",
+    resolved: false,
+    createdAt: serverTimestamp(),
+  };
+  await assertSucceeds(setDoc(doc(user("owner").firestore(), path), note));
+  await assertSucceeds(getDoc(doc(user("editor").firestore(), path)));
+  await assertFails(
+    setDoc(
+      doc(user("editor").firestore(), "projects/rules-project/comments/forged"),
+      { ...note, authorUid: "editor" },
+    ),
+  );
+  await assertFails(getDoc(doc(user("outsider").firestore(), path)));
+  await assertSucceeds(
+    updateDoc(doc(user("owner").firestore(), path), { resolved: true }),
+  );
+  await assertFails(
+    updateDoc(doc(user("editor").firestore(), path), { resolved: false }),
+  );
+  await assertFails(
+    updateDoc(doc(user("owner").firestore(), path), { authorUid: "editor" }),
+  );
+  await assertSucceeds(deleteDoc(doc(user("owner").firestore(), path)));
+});
+test("deleting projects reject member reads and new comments immediately", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "projects/deleting-project"), {
+      title: "Gone",
+      deleting: true,
+    });
+    await setDoc(
+      doc(context.firestore(), "projects/deleting-project/members/owner"),
+      { role: "owner" },
+    );
+  });
+  await assertFails(
+    getDoc(doc(user("owner").firestore(), "projects/deleting-project")),
+  );
+  await assertFails(
+    setDoc(
+      doc(user("owner").firestore(), "projects/deleting-project/comments/new"),
+      { text: "Late note" },
+    ),
+  );
+  await assertFails(
+    setDoc(doc(user("owner").firestore(), "projectDeletions/forged"), {
+      status: "queued",
+    }),
   );
 });

@@ -37,6 +37,12 @@ const options = {
 const callable = (
   fn: (s: ProjectService, a: Actor, data: unknown) => Promise<unknown>,
 ) => onCall(options, (request) => fn(service(), actor(request), request.data));
+export const renameProject = callable((s, a, d) => s.renameProject(a, d));
+export const deleteProject = callable((s, a, d) => s.deleteProject(a, d));
+export const processProjectDeletion = onDocumentCreated(
+  { ...options, document: "projectDeletions/{projectId}", retry: true },
+  (event) => service().processDeletion(event.params.projectId),
+);
 export const createProject = callable((s, a, d) => s.createProject(a, d));
 export const beginDraftUpload = callable((s, a, d) => s.beginDraftUpload(a, d));
 export const commitDraft = callable((s, a, d) => s.commitDraft(a, d));

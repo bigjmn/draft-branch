@@ -1055,3 +1055,42 @@ test(
  await assert.rejects(() => s.createProject(alice, { ...input, draft: { ...draft, blocks: [] } }));
  await assert.rejects(() => s.createProject(alice, { ...input, draft: { ...draft, blocks: [{ ...draft.blocks[0], text: "Changed" }] } }));
  });
+
+test('owner renames project metadata and all member dashboard entries; others cannot', {skip: !enabled}, async()=>{
+ const {s} = fixture();
+ const {projectId} = await s.createProject(alice,{title:'Before',requestId:unique()});
+ await db.doc(`projects/${projectId}/members/${bob.uid}`).set({role:'editor'});
+ await db.doc(`users/${bob.uid}/projects/${projectId}`).set({projectId,title:'Before',role:'editor'});
+ await assert.rejects(()=>s.renameProject(bob,{projectId,title:'Forbidden'}));
+ await assert.rejects(()=>s.renameProject(eve,{projectId,title:'Forbidden'}));
+ await assert.rejects(()=>s.renameProject(alice,{projectId,title:'   '}));
+ await s.renameProject(alice,{projectId,title:'After'});
+ for(const path of [`projects/${projectId}`,`users/${alice.uid}/projects/${projectId}`,`users/${bob.uid}/projects/${projectId}`]) assert.equal((await db.doc(path).get()).data().title,'After');
+ assert.equal((await db.doc(`users/${bob.uid}/projects/${projectId}`).get()).data().role,'editor');
+});
+
+test('owner deletion revokes access, removes all project data and is retry safe', {skip:!enabled}, async()=>{
+ const {s,objects}=fixture(); const requestId=unique();
+ objects.deletePrefix=async prefix=>{for(const path of objects.data.keys())if(path.startsWith(prefix))objects.data.delete(path);};
+ const {projectId}=await s.createProject(alice,{title:'Delete me',requestId});
+ await db.doc(`projects/${projectId}/members/${bob.uid}`).set({role:'editor'});
+ await db.doc(`users/${bob.uid}/projects/${projectId}`).set({projectId,title:'Delete me',role:'editor'});
+ await db.doc(`projects/${projectId}/comments/note`).set({text:'A note'});
+ await db.doc(`invitationMail/delete-${projectId}`).set({projectId,to:'test@example.com'});
+ await assert.rejects(()=>s.deleteProject(bob,{projectId,confirmTitle:'Delete me'}));
+ await assert.rejects(()=>s.deleteProject(alice,{projectId,confirmTitle:'Wrong title'}));
+ await s.deleteProject(alice,{projectId,confirmTitle:'Delete me'});
+ await assert.rejects(()=>s.loadDraft(alice,{projectId,branchId:'main'}));
+ assert.equal((await db.doc(`users/${bob.uid}/projects/${projectId}`).get()).exists,false);
+ assert.equal((await db.doc(`users/${alice.uid}/projects/${projectId}`).get()).exists,false);
+ assert.equal((await s.deleteProject(alice,{projectId,confirmTitle:'Delete me'})).status,'queued');
+ await s.processDeletion(projectId);
+ assert.equal((await db.doc(`projects/${projectId}`).get()).exists,false);
+ assert.equal((await db.doc(`projects/${projectId}/comments/note`).get()).exists,false);
+ assert.equal((await db.doc(`invitationMail/delete-${projectId}`).get()).exists,false);
+ assert.equal([...objects.data.keys()].some(path=>path.startsWith(`projects/${projectId}/`)),false);
+ await s.processDeletion(projectId);
+ assert.equal((await s.deleteProject(alice,{projectId,confirmTitle:'Delete me'})).status,'complete');
+ await assert.rejects(()=>s.createProject(alice,{title:'Delete me',requestId}));
+ await assert.rejects(()=>s.deleteProject(eve,{projectId,confirmTitle:'Delete me'}));
+});

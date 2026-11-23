@@ -49,6 +49,13 @@ Validation before finishing a change: `npm run typecheck && npm test && npm run 
 
 **Version control and merging:** see `docs/backend.md`. The three-way merge in `functions/src/projects/merge.ts` must stay dependency-free: the browser imports the same file through `src/lib/projects/merge.ts`, and the server reruns it with the client's chosen resolutions, so conflict IDs must stay deterministic. Only the owner commits or merges into protected branches (`assertMergeInto`). The graph layout is pure and tested in `src/lib/projects/graph.ts`.
 
+**Desktop app:** `desktop/` is a separate npm package (Electron and Vite, excluded from the root tsconfig) that builds the shared editor into a desktop app; see `desktop/README.md`. It imports `src/` through the `@/` alias and redirects `@/lib/projects/client` to `desktop/src/renderer/data/client.ts`, which offers the same functions backed by an on-device Git repository. What that means for changes in `src/`:
+
+- Adding or changing an export of `src/lib/projects/client.ts` needs the matching change in the desktop client. `desktop/src/renderer/data/contract.ts` fails the desktop typecheck until it follows.
+- Components under `src/components/editor/` take an optional `host` prop (`EditorHost`) and `VersionControlOptions` for desktop-only wording and controls. Keep them optional, with the web behaviour as the default.
+- The desktop store writes Git objects byte for byte like `functions/src/projects/git.ts` (blob, one-entry tree, commit and author line), so revisions keep their IDs across the two. `desktop/tests/backend-parity.test.ts` runs the real `GitService` to check it. A change to the object format or to `serializeSnapshot` has to be made on both sides.
+- Validate with `cd desktop && npm run typecheck && npm test && npm run build`.
+
 ## Styling conventions
 
 - Keep visual styles out of JSX. Components use semantic class names, and the styles live in `src/styles/`: `theme.css` for Tailwind theme tokens, page size, margins and element indents; `editor.css` for the app chrome, using `@apply` for common layout; `screenplay.css` for screenplay elements, pages, zoom and print; `globals.css` as the entry point.

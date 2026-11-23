@@ -1,0 +1,56 @@
+# Packaging for macOS, Windows and Linux. `npm run dist` builds installers for
+# the system it runs on; see README.md for the per-platform commands.
+appId: com.draftbranch.desktop
+productName: DraftBranch
+copyright: Copyright © 2026 J Nicks Productions
+
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: build
+
+# Everything the app needs at run time is bundled into dist/ by `npm run build`,
+# so no node_modules are shipped.
+files:
+  - dist/**/*
+  - package.json
+  # The one build resource the running app reads: its window icon on Linux.
+  - build/icons/256x256.png
+asar: true
+npmRebuild: false
+# No update server is set up; installers are built for manual distribution.
+publish: null
+
+# Icons. build/icon.png is the mark on Apple's icon grid, with the margin macOS
+# expects; the disk image shows the same icon for its mounted volume.
+# build/icons/ holds the mark edge to edge, the way Windows and Linux draw icons.
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.png
+  target:
+    - dmg
+    - zip
+  # Signing: with a "Developer ID Application" certificate in the keychain the
+  # app is signed, and notarized too when the Apple credentials are set (see
+  # README.md). With no certificate the build is left unsigned: it runs on the
+  # Mac that built it, but macOS refuses to open a downloaded copy.
+
+win:
+  icon: build/icons
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  icon: build/icons
+  executableName: draftbranch
+  syncDesktopName: true
+  category: Office
+  synopsis: Screenplay editor with version control
+  target:
+    - AppImage
+    - tar.gz

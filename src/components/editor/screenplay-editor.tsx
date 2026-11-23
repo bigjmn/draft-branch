@@ -1,7 +1,13 @@
 "use client";
 import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   downloadDraft,
   wordCount,
@@ -13,6 +19,7 @@ import {
   type ElementType,
   type ScriptBlock,
 } from "@/lib/editor/types";
+import { ProjectComments } from "./project-comments";
 import { FdxImportButton } from "./fdx-import";
 import { EditorCanvas, type CanvasHandle } from "./editor-canvas";
 import { EditorDialog, type DialogKind } from "./editor-dialog";
@@ -27,11 +34,29 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { AuthPanel } from "@/components/auth/auth-panel";
 import {
   watchBranches,
+  renameProject,
   type InvitationAccess,
   type Branch,
 } from "@/lib/projects/client";
-import { VersionControl } from "./version-control";
+import { VersionControl, type VersionControlOptions } from "./version-control";
 
+/** Lets another shell host the editor without forking it. The desktop app
+ * (desktop/) passes this; the web app leaves it out and renders as before. */
+export interface EditorHost {
+  /** Replaces the link back to the dashboard. */
+  home?: { href: string; label: string };
+  /** Extra controls at the start of the header actions. */
+  actions?: ReactNode;
+  /** Sharing and comments need the cloud. Defaults to true. */
+  collaboration?: boolean;
+  versionControl?: VersionControlOptions;
+  /** Where drafts are kept, for the help dialog. */
+  storageNote?: string;
+  /** Sidebar name and description when nobody is signed in. */
+  guest?: { name: string; detail: string };
+  /** Replaces the PRIVATE / LOCAL badge beside the branch name. */
+  badge?: string;
+}
 export interface ReaderOptions {
   access?: InvitationAccess;
   branches?: Branch[];
@@ -41,9 +66,11 @@ export interface ReaderOptions {
 export function ReadOnlyEditor({
   project,
   reader = {},
+  host,
 }: {
   project: EditorProject;
   reader?: ReaderOptions;
+  host?: EditorHost;
 }) {
   const [branches, setBranches] = useState<Branch[]>([]);
   useEffect(() => {
@@ -75,6 +102,7 @@ export function ReadOnlyEditor({
       project={project}
       readOnly
       reader={controls}
+      host={host}
     />
   );
 }
@@ -97,7 +125,7 @@ function CloudEditor({ project }: { project: EditorProject }) {
     />
   );
 }
-function EditorView({
+export function EditorView({
   state,
   cloud = false,
   project,
@@ -105,6 +133,7 @@ function EditorView({
   canPublish,
   readOnly = false,
   reader,
+  host,
 }: {
   state: Pick<
     ReturnType<typeof useDraft>,
@@ -116,9 +145,12 @@ function EditorView({
   project?: EditorProject;
   getVersion?: () => number;
   canPublish?: () => boolean;
+  host?: EditorHost;
 }) {
   const { draft, status, recoveryError, update, save } = state;
+  const collaboration = host?.collaboration !== false;
   const { user } = useAuth();
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [signup, setSignup] = useState(false);
   const signupDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -133,6 +165,7 @@ function EditorView({
   const [focus, setFocus] = useState(false);
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [importGeneration, setImportGeneration] = useState(0);
+  const [titleError, setTitleError] = useState("");
   const [toast, setToast] = useState("");
   const hydratedTitle = useRef(false);
 
@@ -201,14 +234,37 @@ function EditorView({
         onScene={(id) => canvas.current?.focus(id)}
         onAdd={() => canvas.current?.append("scene")}
         onHelp={() => setDialog("help")}
+        guest={host?.guest}
       />
+      {commentsOpen &&
+        collaboration &&
+        project &&
+        user &&
+        !user.isAnonymous &&
+        !reader?.access && (
+          <ProjectComments
+            key={`${project.id}:${project.branch}`}
+            projectId={project.id}
+            branch={project.branch}
+            owner={project.role === "owner"}
+            selected={draft.blocks.find((b) => b.id === selectedId)}
+            blocks={draft.blocks}
+            onFocus={(id) => canvas.current?.focus(id)}
+            onClose={() => setCommentsOpen(false)}
+          />
+        )}
       <div id="app">
         <header>
           <div className="breadcrumb">
             {draft.title} <span>/</span> <strong>Screenplay</strong>
           </div>
           <div className="header-actions">
-            {cloud &&
+            {host?.home ? (
+              <Link className="dashboard-back" href={host.home.href}>
+                {host.home.label}
+              </Link>
+            ) : (
+              cloud &&
               (user && !user.isAnonymous ? (
                 <Link className="dashboard-back" href="/dashboard">
                   ← Dashboard
@@ -220,8 +276,10 @@ function EditorView({
                 >
                   ← Dashboard
                 </button>
-              ))}
-            {!readOnly && project?.role === "owner" && (
+              ))
+            )}
+            {host?.actions}
+            {!readOnly && collaboration && project?.role === "owner" && (
               <ShareProject projectId={project.id} uid={project.uid} />
             )}
             <VersionControl
@@ -232,7 +290,21 @@ function EditorView({
               saved={status === "saved"}
               getVersion={getVersion}
               canPublish={canPublish}
+              options={host?.versionControl}
             />
+            {collaboration &&
+              project &&
+              user &&
+              !user.isAnonymous &&
+              !reader?.access && (
+                <button
+                  className="button"
+                  aria-expanded={commentsOpen}
+                  onClick={() => setCommentsOpen((value) => !value)}
+                >
+                  Comments
+                </button>
+              )}
             <ThemeToggle />
             <span id="saveStatus" role="status">
               {!readOnly && status === "saved" && <i />}
@@ -289,10 +361,18 @@ function EditorView({
               onBlur={(event) => {
                 if (readOnly) return;
                 const text =
-                  event.currentTarget.textContent?.trim() ||
+                  event.currentTarget.textContent?.trim().slice(0, 200) ||
                   "Untitled screenplay";
                 event.currentTarget.textContent = text;
                 update({ ...draft, title: text });
+                if (project?.role === "owner") {
+                  setTitleError("");
+                  void renameProject(project.id, text).catch(() =>
+                    setTitleError(
+                      "The screenplay title was changed, but the project name could not be saved. Check your connection and try editing the title again.",
+                    ),
+                  );
+                }
               }}
             />
             <p>A little space for your next great story.</p>
@@ -317,9 +397,16 @@ function EditorView({
             ) : (
               project?.branch || "Main draft"
             )}{" "}
-            <span className="local-badge">{cloud ? "PRIVATE" : "LOCAL"}</span>
+            <span className="local-badge">
+              {host?.badge ?? (cloud ? "PRIVATE" : "LOCAL")}
+            </span>
           </div>
         </section>
+        {titleError && (
+          <p className="recovery-banner" role="alert">
+            {titleError}
+          </p>
+        )}
         <Toolbar
           readOnly={readOnly}
           type={type}
@@ -416,6 +503,7 @@ function EditorView({
         onClose={() => setDialog(null)}
         onExport={onExport}
         onPrint={onPrint}
+        storageNote={host?.storageNote}
       />
       <div id="toast" className={toast ? "visible" : ""} role="status">
         {toast}

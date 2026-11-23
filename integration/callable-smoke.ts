@@ -181,6 +181,44 @@ async function main() {
       console.log(
         "PASS: email trigger → guest read → account required → verified acceptance → editor branch",
       );
+      const disposable = await call("createProject", {
+        title: "Deletion smoke",
+        requestId: randomUUID(),
+      });
+      await call("deleteProject", {
+        projectId: disposable.projectId,
+        confirmTitle: "Deletion smoke",
+      });
+      const adminDb = requireFunctions("firebase-admin/firestore").getFirestore(
+        adminApp,
+      );
+      let deletion: any;
+      for (let i = 0; i < 150; i++) {
+        deletion = (
+          await adminDb.doc(`projectDeletions/${disposable.projectId}`).get()
+        ).data();
+        if (deletion?.status === "complete") break;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      assert.equal(deletion?.status, "complete", "deletion trigger finishes");
+      assert.equal(
+        (await adminDb.doc(`projects/${disposable.projectId}`).get()).exists,
+        false,
+      );
+      const [remainingObjects] = await requireFunctions(
+        "firebase-admin/storage",
+      )
+        .getStorage(adminApp)
+        .bucket("demo-draftbranch.firebasestorage.app")
+        .getFiles({ prefix: `projects/${disposable.projectId}/` });
+      assert.equal(
+        remainingObjects.length,
+        0,
+        "Git and draft objects are removed",
+      );
+      console.log(
+        "PASS: owner delete callable → deletion trigger → Firestore and Storage cleanup",
+      );
     } finally {
       await adminApp.delete();
     }

@@ -29,6 +29,7 @@ service firebase.storage {
       // Immutable staging upload authorized by a short-lived server-issued ticket.
       allow create: if resource == null && request.auth != null && request.auth.uid == uid
         && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && !firestore.get(/databases/(default)/documents/projects/$(projectId)).data.get('deleting', false)
         && member().role in ['owner', 'editor']
         && ticket().actorUid == uid
         && ticket().status == 'awaiting_upload'

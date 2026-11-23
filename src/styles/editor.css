@@ -189,6 +189,14 @@ button {
   border-radius: 50%;
   color: #9696a2;
 }
+/* The help button: a fixed circle. Left to size itself it is only as wide as
+   its "?", and the row could squeeze it further. */
+.sidebar-bottom > button {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+}
 .avatar {
   flex: none;
 }

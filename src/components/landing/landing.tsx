@@ -1,4 +1,7 @@
 "use client";
+import { landingState } from "@/lib/firebase/landing-state";
+import { TypewriterLoader } from "@/components/ui/typewriter-loader";
+import { BetaBadge } from "@/components/ui/beta-badge";
 import { signInAnonymously } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -10,7 +13,8 @@ import { firebaseAuth } from "@/lib/firebase/client";
 type TrySource = "nav" | "hero" | "closing";
 
 export function Landing() {
-  const { user } = useAuth();
+  const { user, loading, revision } = useAuth();
+  const gate = landingState(loading, user);
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("signup");
   const [trying, setTrying] = useState(false);
@@ -18,17 +22,16 @@ export function Landing() {
     source: TrySource;
     message: string;
   } | null>(null);
-  // While "Try the Editor" is running it does its own navigation to the blank
-  // project, so the redirect below must not send the user to their saved draft.
+  // Prevent duplicate anonymous sign-in attempts while opening the trial editor.
   const tryingRef = useRef(false);
 
-  // A returning account, or a successful sign-in from the panel, opens the
-  // editor. Guests stay on the landing page so they can come back to it.
+  // Resolve auth before rendering account actions. Re-run on session restoration
+  // (including browser back/forward cache) even when the user ID is unchanged.
   useEffect(() => {
-    if (user && !user.isAnonymous && !tryingRef.current) {
+    if (gate === "dashboard") {
       router.replace("/dashboard");
     }
-  }, [user, router]);
+  }, [gate, revision, router]);
 
   async function tryEditor(source: TrySource) {
     if (tryingRef.current) return;
@@ -39,6 +42,10 @@ export function Landing() {
       // Wait for the saved session to load, and reuse it if there is one.
       const auth = firebaseAuth();
       await auth.authStateReady();
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        router.replace("/dashboard");
+        return;
+      }
       if (!auth.currentUser) await signInAnonymously(auth);
       router.push("/editor?new");
     } catch (caught) {
@@ -57,11 +64,13 @@ export function Landing() {
       </p>
     ) : null;
 
+  if (gate !== "landing") return <TypewriterLoader />;
+
   return (
     <div className="landing">
       <nav className="landing-nav" aria-label="Main">
         <a className="brand" href="#top">
-          <span className="brand-icon">d.</span> DraftBranch
+          <span className="brand-icon">d.</span> DraftBranch <BetaBadge />
         </a>
         <div className="landing-links">
           <a className="nav-section" href="#features">
@@ -95,7 +104,9 @@ export function Landing() {
                 <p className="hero-presenter">
                   J Nicks Productions proudly presents...
                 </p>
-                <h1 className="hero-title">DraftBranch</h1>
+                <h1 className="hero-title">
+                  DraftBranch <BetaBadge />
+                </h1>
 
                 <h2>
                   <em>Industry-standard</em> screenwriting software with{" "}
@@ -187,7 +198,6 @@ export function Landing() {
               icon={<BranchIcon />}
               tone="slate"
               title="Version control for writers"
-              soon
               items={[
                 "Alternate drafts on branches",
                 "Named revisions and history",
@@ -209,19 +219,16 @@ export function Landing() {
             />
             <Step
               title="Branch"
-              soon
               text="Try the bold version on its own branch without touching the main draft."
               visual={<BranchVisual />}
             />
             <Step
               title="Review"
-              soon
               text="Your writing partner sees exactly what changed, scene by scene, and leaves notes in place."
               visual={<ReviewVisual />}
             />
             <Step
               title="Merge"
-              soon
               text="Bring the best of both drafts together. Overlapping edits are resolved side by side, never lost."
               visual={<MergeVisual />}
             />
@@ -263,7 +270,7 @@ export function Landing() {
 
       <div className="landing-footer">
         <span className="brand">
-          <span className="brand-icon">d.</span> DraftBranch
+          <span className="brand-icon">d.</span> DraftBranch <BetaBadge />
         </span>
         <span>A quiet writing room for screenwriters.</span>
       </div>

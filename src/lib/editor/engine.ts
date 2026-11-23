@@ -1,3 +1,4 @@
+import { characterSuggestions } from "./characters";
 import { editorText } from "./dom-text";
 import { parseClipboard, SCREENPLAY_MIME, validateImport } from "./import";
 import {
@@ -27,6 +28,10 @@ export class ScreenplayEngine {
   private historyIndex = 0;
   private restoring = false;
   private active: HTMLDivElement | null = null;
+  private suggestionMenu: HTMLDivElement | null = null;
+  private suggestionBlock: HTMLDivElement | null = null;
+  private suggestions: string[] = [];
+  private suggestionIndex = 0;
 
   constructor(
     private root: HTMLDivElement,
@@ -57,11 +62,28 @@ export class ScreenplayEngine {
       );
       root.addEventListener("keydown", this.onKeyDown, options);
       root.addEventListener("paste", this.onPaste, options);
+      root.addEventListener("focusout", () => this.closeSuggestions(), options);
+      root.addEventListener(
+        "compositionstart",
+        () => this.closeSuggestions(),
+        options,
+      );
+      root.addEventListener(
+        "compositionend",
+        () => this.updateSuggestions(),
+        options,
+      );
+      window.addEventListener("scroll", this.positionSuggestions, {
+        ...options,
+        capture: true,
+      });
+      window.addEventListener("resize", this.positionSuggestions, options);
     }
     this.paginate();
   }
 
   destroy() {
+    this.closeSuggestions();
     this.abort.abort();
     clearTimeout(this.timer);
     this.root.replaceChildren();
@@ -139,8 +161,117 @@ export class ScreenplayEngine {
     if (!(block instanceof HTMLDivElement) || !block.matches(".block")) return;
     this.active = block;
     this.callbacks.onSelection(block.dataset.id!, this.type(block));
+    this.updateSuggestions();
   };
-  private onInput = () => this.changed();
+  private onInput = (event: Event) => {
+    this.changed();
+    if (!(event as InputEvent).isComposing) this.updateSuggestions();
+  };
+  private closeSuggestions() {
+    this.suggestionBlock?.removeAttribute("data-suggestion");
+    for (const attribute of [
+      "aria-controls",
+      "aria-expanded",
+      "aria-activedescendant",
+      "aria-autocomplete",
+      "aria-haspopup",
+    ])
+      this.suggestionBlock?.removeAttribute(attribute);
+    this.suggestionMenu?.remove();
+    this.suggestionMenu = null;
+    this.suggestionBlock = null;
+    this.suggestions = [];
+  }
+  private updateSuggestions() {
+    this.closeSuggestions();
+    const block = this.active;
+    if (
+      this.readOnly ||
+      !block?.isConnected ||
+      document.activeElement !== block ||
+      this.type(block) !== "character"
+    )
+      return;
+    this.suggestions = characterSuggestions(
+      this.snapshot(),
+      block.dataset.id!,
+      this.text(block),
+    );
+    if (!this.suggestions.length) return;
+    this.suggestionBlock = block;
+    this.suggestionIndex = 0;
+    const menu = document.createElement("div");
+    menu.className = "character-suggestions";
+    menu.id = `character-options-${block.dataset.id}`;
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", "Existing characters");
+    block.setAttribute("aria-controls", menu.id);
+    block.setAttribute("aria-expanded", "true");
+    block.setAttribute("aria-autocomplete", "list");
+    block.setAttribute("aria-haspopup", "listbox");
+    this.suggestions.forEach((name, index) => {
+      const option = document.createElement("div");
+      option.id = `${menu.id}-${index}`;
+      option.setAttribute("role", "option");
+      option.textContent = name;
+      option.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        this.suggestionIndex = index;
+        this.acceptSuggestion();
+      });
+      menu.append(option);
+    });
+    this.suggestionMenu = menu;
+    document.body.append(menu);
+    this.highlightSuggestion();
+    this.positionSuggestions();
+  }
+  private highlightSuggestion() {
+    const menu = this.suggestionMenu,
+      block = this.suggestionBlock;
+    if (!menu || !block) return;
+    Array.from(menu.children).forEach((option, index) =>
+      option.setAttribute(
+        "aria-selected",
+        String(index === this.suggestionIndex),
+      ),
+    );
+    const option = menu.children[this.suggestionIndex] as HTMLElement;
+    block.setAttribute("aria-activedescendant", option.id);
+    if (!this.text(block).trim())
+      block.dataset.suggestion = `${this.suggestions[this.suggestionIndex]} (Enter)`;
+    menu.scrollTop = Math.max(
+      0,
+      option.offsetTop - menu.clientHeight + option.offsetHeight,
+    );
+  }
+  private positionSuggestions = () => {
+    if (!this.suggestionMenu || !this.suggestionBlock) return;
+    const rect = this.suggestionBlock.getBoundingClientRect();
+    const menu = this.suggestionMenu;
+    menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(8, rect.bottom + menu.offsetHeight + 8 > window.innerHeight ? rect.top - menu.offsetHeight - 4 : rect.bottom + 4)}px`;
+  };
+  private acceptSuggestion() {
+    const block = this.suggestionBlock,
+      name = this.suggestions[this.suggestionIndex];
+    if (!block || !name) return;
+    this.closeSuggestions();
+    block.textContent = name;
+    const following = this.blocks()[this.blocks().indexOf(block) + 1];
+    if (following && this.type(following) === "dialogue")
+      this.focusBlock(following);
+    else {
+      const dialogue = this.createBlock({
+        id: crypto.randomUUID(),
+        type: "dialogue",
+        text: "",
+      });
+      block.after(dialogue);
+      this.focusBlock(dialogue);
+    }
+    this.changed();
+  }
   private selectedRange() {
     const selection = window.getSelection();
     if (!selection?.rangeCount) return null;
@@ -258,6 +389,7 @@ export class ScreenplayEngine {
     }
   };
   private travelHistory(direction: number) {
+    this.closeSuggestions();
     const next = this.historyIndex + direction;
     if (next < 0 || next >= this.history.length) return;
     this.historyIndex = next;
@@ -278,6 +410,30 @@ export class ScreenplayEngine {
       event.isComposing
     )
       return;
+    if (
+      this.suggestionMenu &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey
+    ) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        this.suggestionIndex =
+          (this.suggestionIndex +
+            (event.key === "ArrowDown" ? 1 : -1) +
+            this.suggestions.length) %
+          this.suggestions.length;
+        this.highlightSuggestion();
+        return;
+      }
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        this.acceptSuggestion();
+        return;
+      }
+      if (["ArrowLeft", "ArrowRight", "Escape", "Tab"].includes(event.key))
+        this.closeSuggestions();
+    }
     if (
       (event.metaKey || event.ctrlKey) &&
       (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")
@@ -376,6 +532,7 @@ export class ScreenplayEngine {
     }
     this.callbacks.onSelection(block.dataset.id!, type);
     this.changed();
+    this.updateSuggestions();
   }
   private caretOffset(block: HTMLElement): number | null {
     const selection = window.getSelection();
@@ -467,6 +624,7 @@ export class ScreenplayEngine {
         selection.addRange(range);
       }
     }
+    this.positionSuggestions();
     this.callbacks.onLayout({
       pages: groups.length,
       scenes: groups.flatMap((group, index) =>

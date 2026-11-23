@@ -7,8 +7,16 @@ interface Props {
   onClose: () => void;
   onExport: (format: ExportFormat) => void;
   onPrint: () => void;
+  /** Where drafts are kept, when it is not this browser (the desktop app). */
+  storageNote?: string;
 }
-export function EditorDialog({ kind, onClose, onExport, onPrint }: Props) {
+export function EditorDialog({
+  kind,
+  onClose,
+  onExport,
+  onPrint,
+  storageNote,
+}: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (kind) ref.current?.showModal();
@@ -61,8 +69,8 @@ export function EditorDialog({ kind, onClose, onExport, onPrint }: Props) {
           <div className="eyebrow">MAKE YOURSELF AT HOME</div>
           <h2 id="dialog-title">Just keep writing.</h2>
           <p>
-            Your draft saves in this browser. Export a copy whenever you need
-            one.
+            {storageNote ??
+              "Your draft saves in this browser. Export a copy whenever you need one."}
           </p>
           <div className="shortcut-row">
             <span>Next element</span>

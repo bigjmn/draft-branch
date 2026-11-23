@@ -51,6 +51,10 @@ async function call<T>(name: string, data: unknown): Promise<T> {
   return (await httpsCallable<unknown, T>(firebaseFunctions(), name)(data))
     .data;
 }
+export const deleteProject = (projectId: string, confirmTitle: string) =>
+  call<{ status: string }>("deleteProject", { projectId, confirmTitle });
+export const renameProject = (projectId: string, title: string) =>
+  call<{ title: string }>("renameProject", { projectId, title });
 export const createProject = (
   title: string,
   requestId = crypto.randomUUID(),
@@ -486,15 +490,21 @@ export async function saveProjectDraft(input: {
 }): Promise<UploadResult> {
   const { uploadId } = await uploadProjectDraft(input);
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      stop();
+      reject(new Error("Cloud save confirmation timed out. Please retry."));
+    }, 90000);
     const stop = watchUpload(
       input.projectId,
       uploadId,
       (result) => {
         if (result.status === "awaiting_upload") return;
+        clearTimeout(timer);
         stop();
         resolve(result);
       },
       (error) => {
+        clearTimeout(timer);
         stop();
         reject(error);
       },

@@ -1,8 +1,11 @@
 "use client";
+import { BetaBadge } from "@/components/ui/beta-badge";
 import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 
+import { DeleteProject } from "./delete-project";
 import { FdxFileInput } from "@/components/editor/fdx-import";
 import type { Draft } from "@/lib/editor/types";
+import { initializeImportedProject } from "@/lib/projects/initialize-import";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
@@ -12,6 +15,8 @@ import { ThemeToggle } from "@/components/theme/theme-provider";
 import { firebaseAuth } from "@/lib/firebase/client";
 import {
   createProject,
+  loadProjectDraft,
+  saveProjectDraft,
   watchProjects,
   type Project,
 } from "@/lib/projects/client";
@@ -71,10 +76,30 @@ function ProjectList({ name }: { name: string }) {
         request.current!.id,
         imported ?? undefined,
       );
+      if (imported) {
+        const importedDraft = { ...imported, title: value };
+        await initializeImportedProject(
+          project.head,
+          importedDraft,
+          () => loadProjectDraft(project.projectId, "main"),
+          (loaded) =>
+            saveProjectDraft({
+              projectId: project.projectId,
+              branchId: "main",
+              baseCommit: loaded.baseCommit,
+              expectedVersion: loaded.version,
+              draft: importedDraft,
+              requestId: request.current!.id + "-import",
+            }),
+        );
+      }
       router.push(projectHref(project.projectId));
-    } catch {
+    } catch (error) {
       setCreateError(
-        "Couldn’t create the project. Please try again. Your retry won’t create a duplicate.",
+        error instanceof Error
+          ? error.message +
+              " Retry with the same title and file to avoid a duplicate."
+          : "Couldn’t create the project. Please retry.",
       );
       setBusy(false);
       inFlight.current = false;
@@ -91,7 +116,7 @@ function ProjectList({ name }: { name: string }) {
     <div className="dashboard">
       <nav className="workspace-nav" aria-label="Workspace">
         <Link href="/dashboard" className="brand">
-          <span className="brand-icon">d.</span> DraftBranch
+          <span className="brand-icon">d.</span> DraftBranch <BetaBadge />
         </Link>
         <div className="workspace-account">
           <ThemeToggle />
@@ -117,7 +142,7 @@ function ProjectList({ name }: { name: string }) {
         <div className="dashboard-heading">
           <div>
             <div className="eyebrow">YOUR WRITING ROOM</div>
-            <h1>Good stories start here.</h1>
+            <h1>Let’s get to work.</h1>
             <p>Your projects, shared drafts, and next great idea.</p>
           </div>
           <button
@@ -163,29 +188,34 @@ function ProjectList({ name }: { name: string }) {
         ) : shown.length ? (
           <div className="project-grid">
             {shown.map((p) => (
-              <Link
-                className="project-card"
-                key={p.projectId}
-                href={projectHref(p.projectId)}
-              >
-                <div className="project-card-top">
-                  <span className="project-glyph" aria-hidden="true">
-                    ▤
-                  </span>
-                  <span className="project-privacy">Private</span>
-                </div>
-                <h2>{p.title}</h2>
-                <p>
-                  Screenplay ·{" "}
-                  {p.role === "owner"
-                    ? "Owned by you"
-                    : `Shared with you · ${p.role}`}
-                </p>
-                <div className="project-card-bottom">
-                  <span>⑂ main</span>
-                  <span>Open screenplay ↗</span>
-                </div>
-              </Link>
+              <div className="project-card-wrap" key={p.projectId}>
+                <Link
+                  className="project-card"
+                  key={p.projectId}
+                  href={projectHref(p.projectId)}
+                >
+                  <div className="project-card-top">
+                    <span className="project-glyph" aria-hidden="true">
+                      ▤
+                    </span>
+                    <span className="project-privacy">Private</span>
+                  </div>
+                  <h2>{p.title}</h2>
+                  <p>
+                    Screenplay ·{" "}
+                    {p.role === "owner"
+                      ? "Owned by you"
+                      : `Shared with you · ${p.role}`}
+                  </p>
+                  <div className="project-card-bottom">
+                    <span>⑂ main</span>
+                    <span>Open screenplay ↗</span>
+                  </div>
+                </Link>
+                {p.role === "owner" && (
+                  <DeleteProject projectId={p.projectId} title={p.title} />
+                )}
+              </div>
             ))}
           </div>
         ) : (
@@ -229,7 +259,7 @@ function ProjectList({ name }: { name: string }) {
           <div className="eyebrow">A NEW BEGINNING</div>
           <h2>Create a project</h2>
           <p>
-            Start with a blank screenplay or import an FDX file. Only you can
+            Start with a blank screenplay or import an FDX or PDF file. Only you can
             access it until you invite someone.
           </p>
           <label htmlFor="project-title">Project title</label>

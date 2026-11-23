@@ -131,6 +131,19 @@ Firebase allows sign-in only from authorized domains (`localhost`, `draftbranch.
 
 Read `AGENTS.md` before automated implementation work. This Next.js installation includes version-specific documentation under `node_modules/next/dist/docs/`.
 
+### Desktop app
+
+`desktop/` is DraftBranch as a desktop application (Electron) for macOS, Windows and Linux. It works with no account, keeping projects inside the app, and signed-in writers can pull their cloud projects, keep writing and committing offline, and sync when they reconnect. It is a separate npm package that reuses this app's editor and version-control components.
+
+```sh
+npm ci          # repository root, once
+cd desktop
+npm install
+npm run dev
+```
+
+See [desktop/README.md](desktop/README.md) for building installers, where projects are stored, and how sync works.
+
 ## Using the editor
 
 The editor loads the existing draft for the current browser origin. If no draft exists, it starts with the sample screenplay, **The Last Light**.
@@ -631,3 +644,26 @@ Profiles live separately from private account records in `profiles/{uid}`. Fires
 Deploy both Firestore and Storage rules before using profiles in production: `firebase deploy --only firestore:rules,storage`. Deploy the updated frontend through the usual hosting workflow. Profile styles are in `src/styles/profile.css`.
 
 FDX imports discard whitespace-only Action paragraphs used as layout spacers, while preserving nonempty text and other element types. Already-imported drafts are unchanged; reimport the source to apply this correction.
+
+Project creation verifies an imported FDX draft before opening the editor. If an older deployed `createProject` ignores the initial draft, the client uploads it through the existing draft-save flow, waits for acceptance, and verifies the result. This compatibility path leaves the import as a working draft ready to commit. Retries reuse the creation/upload request IDs and never overwrite an existing nonempty draft.
+
+Owner title edits also call `renameProject` to update project metadata and every member's dashboard entry. Deploy the new callable with `firebase deploy --only functions:renameProject` (and deploy `functions:createProject` for atomic imports on current backends). Script titles remain part of versioned screenplay content; other editors can change those without renaming the shared project. Punctuation-only FDX title-page spacers are ignored when choosing an imported title.
+
+
+### Owner comments and project deletion
+
+Open **Comments** in a cloud project's editor, select a screenplay element, and add a note. Comments retain that element's ID and a short quote on the current branch. Registered project members can read the notes; only the owner can add, resolve/reopen, or delete them. Removed elements retain their quoted context. Comments are collaboration metadata, not committed screenplay text. Invitation-link-only readers do not receive private comment access.
+
+Owners can choose **Delete project** beneath a dashboard card and type the project's title to confirm. The backend immediately marks the project as deleting, removes members' dashboard entries, and denies project access. The retryable `processProjectDeletion` worker removes Firestore subcollections, invitation mail records, and the project's Storage prefix. A minimal owner/status deletion record remains to prevent old creation requests from recreating the project. Previously downloaded exports or collaborators' local recovery copies cannot be remotely erased.
+
+Deploy the frontend, Functions (including `deleteProject` and `processProjectDeletion`), Firestore rules, and Storage rules together: `firebase deploy --only functions,firestore:rules,storage`. Backend service access checks and Storage writes also enforce deletion state, so deploy all updated Functions.
+
+The landing page waits for Firebase session restoration, redirects registered users to `/dashboard`, and retains sign-in/trial actions for signed-out or anonymous visitors. Token changes and browser back/forward-cache restoration refresh this decision.
+
+
+### Character autocomplete and PDF import
+
+- Empty character cues suggest the second-to-last speaker before the current cue. Typing filters existing character names across the draft; names are deduplicated and continuation suffixes are omitted. Up/Down selects an option, Enter accepts and focuses dialogue, and Left/Right or Escape dismisses. Suggestions are not saved until accepted, and accepting a suggestion is undoable.
+- Both the new-project form and editor import dialog accept `.fdx` and `.pdf`. PDF.js extracts PDF text locally in the browser; text positions, indentation, and vertical spacing infer screenplay elements and wrapped paragraphs. PDF imports use the filename as the title and warn that inferred formatting needs review. FDX remains the more accurate interchange format.
+- PDF imports are limited to 20 MiB and 300 pages and must fit the existing screenplay size limits. Password-protected PDFs require an unlocked copy. Scanned/image-only pages need OCR first. Dual-column dialogue and unusual layouts may need manual correction; PDF import does not preserve fonts, emphasis, annotations, or revision marks.
+- `postinstall`, `predev`, and `prebuild` copy the matching PDF.js worker into the generated, ignored `public/pdfjs/` directory. Deploy that public asset with the frontend; no external worker CDN or backend changes are required.

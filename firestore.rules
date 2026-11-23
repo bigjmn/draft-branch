@@ -3,7 +3,9 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function member(projectId) {
-      return signedIn() && exists(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid));
+      return signedIn() && exists(/databases/$(database)/documents/projects/$(projectId))
+        && !get(/databases/$(database)/documents/projects/$(projectId)).data.get("deleting", false)
+        && exists(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid));
     }
     function owner(projectId) {
       return member(projectId) && get(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid)).data.role == 'owner';
@@ -22,6 +24,7 @@ service cloud.firestore {
         && request.resource.data.avatarId is string && (request.resource.data.avatarId == '' || request.resource.data.avatarId.matches('^[a-f0-9-]{36}$'))
         && request.resource.data.updatedAt == request.time;
     }
+    match /projectDeletions/{id} { allow read, write: if false; }
     match /invitationMail/{id} { allow read, write: if false; }
     match /invitationLimits/{id} { allow read, write: if false; }
     match /emulatorMail/{id} { allow read, write: if false; }
@@ -37,6 +40,22 @@ service cloud.firestore {
     match /projects/{projectId} {
       allow read: if member(projectId);
       allow write: if false;
+      match /comments/{commentId} {
+        allow read: if member(projectId);
+        allow create: if owner(projectId)
+          && request.resource.data.keys().hasAll(['authorUid','authorName','branch','blockId','quote','text','resolved','createdAt'])
+          && request.resource.data.keys().hasOnly(['authorUid','authorName','branch','blockId','quote','text','resolved','createdAt'])
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 100
+          && request.resource.data.branch is string && request.resource.data.branch.size() <= 64
+          && exists(/databases/$(database)/documents/projects/$(projectId)/branches/$(request.resource.data.branch))
+          && request.resource.data.blockId is string && request.resource.data.blockId.size() > 0 && request.resource.data.blockId.size() <= 128
+          && request.resource.data.quote is string && request.resource.data.quote.size() <= 500
+          && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+          && request.resource.data.resolved == false && request.resource.data.createdAt == request.time;
+        allow update: if owner(projectId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resolved']) && request.resource.data.resolved is bool;
+        allow delete: if owner(projectId);
+      }
       match /members/{uid} { allow read: if member(projectId); allow write: if false; }
       match /branches/{branchId} { allow read: if member(projectId); allow write: if false; }
       match /commits/{commitId} { allow read: if member(projectId); allow write: if false; }

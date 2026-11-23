@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { readFdx } from "@/lib/editor/import";
+import { readPdf } from "@/lib/editor/pdf-import";
 import type { Draft } from "@/lib/editor/types";
 export function FdxFileInput({
   onChange,
@@ -14,16 +15,16 @@ export function FdxFileInput({
   return (
     <div className="fdx-import">
       <label>
-        Import Final Draft (.fdx)
+        Import screenplay (.fdx or .pdf)
         <input
           type="file"
-          accept=".fdx"
+          accept=".fdx,.pdf,application/pdf"
           disabled={disabled}
           onChange={async (e) => {
             const input = e.currentTarget;
             input.setCustomValidity(
               input.files?.length
-                ? "Wait for the FDX file to finish loading."
+                ? "Wait for the screenplay file to finish loading."
                 : "",
             );
             const ticket = ++sequence.current;
@@ -32,7 +33,10 @@ export function FdxFileInput({
             setMessage("");
             if (!file) return;
             try {
-              const result = await readFdx(file);
+              setMessage("Reading screenplay…");
+              const result = await (/\.pdf$/i.test(file.name)
+                ? readPdf(file)
+                : readFdx(file));
               if (ticket !== sequence.current) return;
               input.setCustomValidity("");
               onChange(result.draft);
@@ -42,7 +46,7 @@ export function FdxFileInput({
             } catch (error) {
               if (ticket === sequence.current) {
                 input.setCustomValidity(
-                  "Choose a valid FDX file or clear the file selection.",
+                  "Choose a valid FDX or PDF file or clear the file selection.",
                 );
                 setMessage(
                   error instanceof Error
@@ -68,7 +72,7 @@ export function FdxImportButton({
   return (
     <>
       <button className="button" onClick={() => modal.current?.showModal()}>
-        Import FDX
+        Import FDX / PDF
       </button>
       <dialog ref={modal} className="create-project-dialog">
         <h2>Import screenplay</h2>

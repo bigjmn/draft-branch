@@ -90,8 +90,10 @@ export function parseFdx(
   const title =
     Array.from(titlePage?.querySelectorAll("Paragraph") ?? [])
       .map(text)
-      .find((t) => t.trim())
-      ?.trim() || filename.replace(/\.fdx$/i, "");
+      .find((t) => /[\p{L}\p{N}]/u.test(t))
+      ?.trim() ||
+    filename.replace(/\.fdx$/i, "").trim() ||
+    "Untitled screenplay";
   warnings.add(
     "Text and screenplay element types are preserved. Custom fonts, emphasis, notes, and revision marks are not imported.",
   );

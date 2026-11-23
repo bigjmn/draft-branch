@@ -1,4 +1,5 @@
 "use client";
+import { BetaBadge } from "@/components/ui/beta-badge";
 import { signOut } from "firebase/auth";
 import { useAuth } from "@/components/auth/auth-provider";
 import type { Scene } from "@/lib/editor/types";
@@ -11,6 +12,8 @@ interface Props {
   onScene: (id: string) => void;
   onAdd: () => void;
   onHelp: () => void;
+  /** Name and description shown when nobody is signed in. */
+  guest?: { name: string; detail: string };
 }
 export function Sidebar({
   readOnly = false,
@@ -20,16 +23,17 @@ export function Sidebar({
   onScene,
   onAdd,
   onHelp,
+  guest,
 }: Props) {
   const { user } = useAuth();
-  const name = user?.displayName || user?.email || "Guest";
+  const name = user?.displayName || user?.email || guest?.name || "Guest";
   return (
     <aside id="sidebar">
       <a
         className="brand"
         href={!user || user.isAnonymous ? "/" : "/dashboard"}
       >
-        <span className="brand-icon">d.</span> DraftBranch
+        <span className="brand-icon">d.</span> DraftBranch <BetaBadge />
       </a>
       <div className="project">
         <div className="eyebrow">YOUR WORKSPACE</div>
@@ -77,7 +81,9 @@ export function Sidebar({
             {name}
           </span>
           <small>
-            {!user || user.isAnonymous ? "Guest workspace" : "Your workspace"}
+            {!user || user.isAnonymous
+              ? (guest?.detail ?? "Guest workspace")
+              : "Your workspace"}
             {user && (
               <>
                 {" "}

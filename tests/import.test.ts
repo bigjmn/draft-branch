@@ -210,3 +210,14 @@ test("FDX spacer actions do not become extra editor elements", () => {
   );
   assert.equal(draft.blocks[1].text, "A door opens.");
 });
+
+test("FDX title-page spacer punctuation is not used as the project title", () => {
+  const file = (title: string) =>
+    `<FinalDraft><Content><Paragraph Type="Action"><Text>A ship sails.</Text></Paragraph></Content><TitlePage><Content><Paragraph><Text>.</Text></Paragraph>${title}</Content></TitlePage></FinalDraft>`;
+  assert.equal(parseFdx(file(""), "Sindibad.fdx").draft.title, "Sindibad");
+  assert.equal(
+    parseFdx(file("<Paragraph><Text>Sindibad</Text></Paragraph>"), "script.fdx")
+      .draft.title,
+    "Sindibad",
+  );
+});

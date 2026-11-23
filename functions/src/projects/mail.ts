@@ -49,6 +49,7 @@ export async function deliverInvitation(
     const inviteRef = db.doc(
       `projects/${data.projectId}/invitations/${data.invitationId}`,
     );
+    const project = await tx.get(db.doc(`projects/${data.projectId}`));
     const invite = await tx.get(inviteRef);
     const invitation = invite.data();
     const inviter = invitation
@@ -57,6 +58,8 @@ export async function deliverInvitation(
         )
       : null;
     if (
+      !project.exists ||
+      project.data()?.deleting ||
       !invitation ||
       invitation.status !== "pending" ||
       invitation.expiresAt.toMillis() <= Date.now() ||

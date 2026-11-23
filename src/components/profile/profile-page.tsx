@@ -1,4 +1,5 @@
 "use client";
+import { BetaBadge } from "@/components/ui/beta-badge";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -43,7 +44,7 @@ export function ProfilePage() {
     <div className="dashboard">
       <nav className="workspace-nav">
         <Link href="/" className="brand">
-          DraftBranch
+          DraftBranch <BetaBadge />
         </Link>
         <div className="workspace-account">
           <Link href={user && !user.isAnonymous ? "/dashboard" : "/"}>

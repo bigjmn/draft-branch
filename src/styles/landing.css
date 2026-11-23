@@ -118,7 +118,7 @@
   font-weight: 800;
   letter-spacing: -0.045em;
   line-height: 1.05;
-  color: var(--landing-accent);
+  color: #000;
 }
 
 .hero .hero-statement {

@@ -27,6 +27,19 @@ import { ChangeList } from "./vc-changes";
 import { CommitGraph, authorBadge } from "./vc-graph";
 import { MergeWorkspace, UpdateWorkspace } from "./vc-merge";
 
+/** Wording and extras for shells where the draft is not saved to the cloud
+ * (the desktop app). Every field falls back to the web app's behaviour. */
+export interface VersionControlOptions {
+  savedLabel?: string;
+  savingLabel?: string;
+  repositoryLabel?: string;
+  /** False where merge requests do not exist, e.g. a project with no cloud. */
+  mergeRequests?: boolean;
+  /** A short tag beside a revision in the graph, such as "not published". */
+  revisionTag?: (commit: RevisionSummary) => string | undefined;
+  /** Commit wording where a revision is not published as it is committed. */
+  commitLabels?: { busy: string; progress: string; done: string };
+}
 interface Props {
   readOnly?: boolean;
   reader?: ReaderOptions;
@@ -35,6 +48,7 @@ interface Props {
   saved: boolean;
   getVersion?: () => number;
   canPublish?: () => boolean;
+  options?: VersionControlOptions;
 }
 type View = "graph" | "working" | "merge" | "request" | "update";
 const DEFAULT_BRANCH = "main";
@@ -63,6 +77,7 @@ function VersionPanel({
   saved,
   getVersion,
   canPublish,
+  options,
   close,
 }: Props & { close: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -271,7 +286,7 @@ function VersionPanel({
     lock.current = true;
     setBusy(true);
     setError("");
-    setNotice("Publishing revision…");
+    setNotice(options?.commitLabels?.progress ?? "Publishing revision…");
     const input = {
       projectId: project!.id,
       branchId: project!.branch,
@@ -295,7 +310,10 @@ function VersionPanel({
           if (result.status === "queued") return;
           stop.current?.();
           if (result.status === "succeeded") {
-            setNotice("Revision published. Reopening your draft…");
+            setNotice(
+              options?.commitLabels?.done ??
+                "Revision published. Reopening your draft…",
+            );
             window.location.reload();
           } else {
             setBusy(false);
@@ -373,7 +391,9 @@ function VersionPanel({
           <div className="eyebrow">PROJECT HISTORY</div>
           <h2 id="version-title">Version control</h2>
         </div>
-        <span className="vc-private">Private repository</span>
+        <span className="vc-private">
+          {options?.repositoryLabel ?? "Private repository"}
+        </span>
         <button
           className="vc-close"
           aria-label="Close version control"
@@ -438,8 +458,8 @@ function VersionPanel({
               {readOnly
                 ? "Read-only access"
                 : saved
-                  ? "Cloud draft saved"
-                  : "Waiting for cloud save…"}
+                  ? (options?.savedLabel ?? "Cloud draft saved")
+                  : (options?.savingLabel ?? "Waiting for cloud save…")}
             </span>
           </div>
           {creating && !readOnly && (
@@ -553,7 +573,7 @@ function VersionPanel({
                   </button>
                 );
               })}
-              {!access && (
+              {!access && options?.mergeRequests !== false && (
                 <>
                   <div className="eyebrow vc-branch-heading">
                     MERGE REQUESTS <span>{openRequests.length}</span>
@@ -649,7 +669,9 @@ function VersionPanel({
                         className="primary-action"
                         disabled={!canCommit || !message.trim()}
                       >
-                        {busy ? "Publishing…" : "Commit revision"}
+                        {busy
+                          ? (options?.commitLabels?.busy ?? "Publishing…")
+                          : "Commit revision"}
                       </button>
                     </div>
                   </form>
@@ -733,6 +755,7 @@ function VersionPanel({
                       }
                       onWorking={() => setView("working")}
                       author={author}
+                      tag={options?.revisionTag}
                     />
                   )}
                   {commits?.length === 300 && (

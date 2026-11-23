@@ -76,7 +76,8 @@ export class ProjectService {
       this.project(pid),
       this.member(pid, actor.uid),
     );
-    if (!project.exists) fail("not-found", "Project not found.");
+    if (!project.exists || project.data()?.deleting)
+      fail("not-found", "Project not found.");
     assertRole(member.data()?.role, roles);
     return { project: project.data()!, role: member.data()!.role as Role };
   }
@@ -86,6 +87,76 @@ export class ProjectService {
     roles: Role[] = MEMBERS,
   ) {
     return this.db.runTransaction((tx) => this.access(tx, pid, actor, roles));
+  }
+
+  /** A durable deletion job revokes access immediately and survives worker retries. */
+  async deleteProject(actor: Actor, input: unknown) {
+    const data = record(input),
+      pid = id(data.projectId);
+    const job = this.db.doc(`projectDeletions/${pid}`);
+    return this.db.runTransaction(async (tx) => {
+      const existing = await tx.get(job);
+      if (existing.exists) {
+        if (existing.data()!.ownerUid !== actor.uid)
+          fail("permission-denied", "Only the owner can delete a project.");
+        return { status: existing.data()!.status };
+      }
+      const { project } = await this.access(tx, pid, actor, ["owner"]);
+      if (data.confirmTitle !== project.title)
+        fail(
+          "invalid-argument",
+          "Type the current project title to confirm deletion.",
+        );
+      const members = await tx.get(this.project(pid).collection("members"));
+      tx.update(this.project(pid), { deleting: true, updatedAt: now() });
+      for (const member of members.docs)
+        tx.delete(this.db.doc(`users/${member.id}/projects/${pid}`));
+      tx.create(job, {
+        ownerUid: actor.uid,
+        status: "queued",
+        createdAt: now(),
+      });
+      return { status: "queued" };
+    });
+  }
+  async processDeletion(pid: string) {
+    const job = this.db.doc(`projectDeletions/${id(pid)}`);
+    const state = await job.get();
+    if (!state.exists || state.data()!.status === "complete") return;
+    if (!this.objects.deletePrefix)
+      throw new Error("Object cleanup is unavailable.");
+    // Remove all branches, comments, invitations, drafts, commits and staging tickets.
+    await this.db.recursiveDelete(this.project(pid));
+    const mail = await this.db
+      .collection("invitationMail")
+      .where("projectId", "==", pid)
+      .get();
+    await Promise.all(
+      mail.docs.map(async (item) => {
+        await item.ref.delete();
+        await this.db.doc(`emulatorMail/${item.id}`).delete();
+      }),
+    );
+    await this.objects.deletePrefix(`projects/${pid}/`);
+    await job.update({ status: "complete", completedAt: now() });
+  }
+
+  async renameProject(actor: Actor, input: unknown) {
+    const data = record(input),
+      pid = id(data.projectId),
+      title = text(data.title, "project title");
+    await this.db.runTransaction(async (tx) => {
+      await this.access(tx, pid, actor, ["owner"]);
+      const members = await tx.get(this.project(pid).collection("members"));
+      tx.update(this.project(pid), { title, updatedAt: now() });
+      for (const member of members.docs)
+        tx.set(
+          this.db.doc(`users/${member.id}/projects/${pid}`),
+          { title },
+          { merge: true },
+        );
+    });
+    return { title };
   }
 
   async createProject(actor: Actor, input: unknown) {
@@ -101,8 +172,15 @@ export class ProjectService {
           data.draft === undefined ? { title } : { title, snapshot },
         ),
       );
+    if ((await this.db.doc(`projectDeletions/${pid}`).get()).exists)
+      fail(
+        "failed-precondition",
+        "This project was deleted. Start a new project instead.",
+      );
     const existing = await this.project(pid).get();
     if (existing.exists) {
+      if (existing.data()?.deleting)
+        fail("not-found", "Project is being deleted.");
       assertRequest(existing.data(), fingerprint);
       return {
         projectId: pid,
@@ -120,7 +198,12 @@ export class ProjectService {
       timestamp,
     );
     return this.db.runTransaction(async (tx) => {
-      const project = await tx.get(this.project(pid));
+      const [project, deletion] = await tx.getAll(
+        this.project(pid),
+        this.db.doc(`projectDeletions/${pid}`),
+      );
+      if (deletion.exists || project.data()?.deleting)
+        fail("failed-precondition", "Project was deleted.");
       if (project.exists) {
         assertRequest(project.data(), fingerprint);
         return {
@@ -612,7 +695,7 @@ export class ProjectService {
           this.project(pid).collection("invitations").doc(invitationId),
           this.project(pid),
         );
-        if (!invite.exists || !project.exists)
+        if (!invite.exists || !project.exists || project.data()?.deleting)
           fail(
             "permission-denied",
             "Invitation link is invalid or unavailable.",
@@ -734,7 +817,7 @@ export class ProjectService {
         this.project(pid),
         this.member(pid, actor.uid),
       );
-      if (!invite.exists || !project.exists)
+      if (!invite.exists || !project.exists || project.data()?.deleting)
         fail("not-found", "Invitation not found.");
       const invitation = invite.data()!;
       if (invitation.tokenHash) this.assertToken(invitation, data.token);

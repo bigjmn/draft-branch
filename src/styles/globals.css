@@ -2,6 +2,7 @@
 @import "./theme.css";
 @import "./editor.css";
 @import "./screenplay.css";
+@import "./character-suggestions.css";
 @import "./landing.css";
 
 @import "./workspace.css";
@@ -11,6 +12,7 @@
 @import "./legal.css";
 
 @import "./sharing.css";
+@import "./comments.css";
 
 @import "./loader.css";
 
@@ -20,3 +22,10 @@
 .fdx-import label { display: grid; gap: .6rem; }
 .fdx-import input { max-width: 100%; }
 .fdx-import p { font-size: .85rem; line-height: 1.5; }
+
+.beta-badge { display:inline-flex; align-items:center; vertical-align:middle; flex-shrink:0; padding:3px 7px; border:1px solid var(--green); border-radius:5px; color:var(--green); background:color-mix(in srgb, var(--green) 10%, transparent); font:600 10px/1.2 var(--font-ui); letter-spacing:.06em; text-transform:uppercase; white-space:nowrap; }
+.hero-title .beta-badge { vertical-align:super; margin-left:8px; font-size:12px; }
+/* Landing is always light, independently of the editor's selected theme. */
+.landing .beta-badge { color: #0f766e; border-color: #0f766e; background: #ccfbf1; }
+.landing-footer .beta-badge { color: var(--landing-highlight); border-color: currentColor; background: transparent; }
+#sidebar .brand { flex-wrap: wrap; row-gap: 6px; }

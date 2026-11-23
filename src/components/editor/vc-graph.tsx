@@ -83,6 +83,7 @@ export function CommitGraph({
   working,
   onWorking,
   author,
+  tag,
 }: {
   /** Already ordered (orderCommits) and filtered to the visible scope. */
   commits: RevisionSummary[];
@@ -94,6 +95,8 @@ export function CommitGraph({
   working: number | null;
   onWorking: () => void;
   author: (commit: RevisionSummary) => Author;
+  /** Optional short tag shown after a revision's message. */
+  tag?: (commit: RevisionSummary) => string | undefined;
 }) {
   const rows = useMemo(() => layoutGraph(commits), [commits]);
   const width = graphWidth(rows);
@@ -157,6 +160,7 @@ export function CommitGraph({
       )}
       {commits.map((commit, i) => {
         const who = author(commit);
+        const label = tag?.(commit);
         return (
           <button
             key={commit.oid}
@@ -179,7 +183,10 @@ export function CommitGraph({
             <span className="vc-log-graph">
               <Lanes row={rows[i]} width={width} />
             </span>
-            <span className="vc-log-message">{commit.message}</span>
+            <span className="vc-log-message">
+              {commit.message}
+              {label && <small className="vc-log-tag">{label}</small>}
+            </span>
             <span className="vc-log-author">
               <span className={`vc-avatar lane-bg-${who.color}`}>
                 {who.initials}

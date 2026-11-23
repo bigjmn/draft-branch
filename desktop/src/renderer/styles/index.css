@@ -1,0 +1,9 @@
+/* The desktop app looks like the web app: it loads the same stylesheets and
+   adds the few pieces only the desktop has. */
+@import "../../../../src/styles/globals.css";
+@import "./desktop.css";
+
+/* Tailwind builds utilities from the class names it finds in source files.
+   The shared components live outside this package, so point it at them. */
+@source "../../../../src";
+@source "..";

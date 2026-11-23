@@ -1,0 +1,542 @@
+/* Pieces only the desktop app has. Colours come from the shared theme
+   variables (src/styles/theme.css), so both palettes keep working. */
+
+/* ---- Library ------------------------------------------------------------ */
+.library .workspace-account > button:not(.theme-toggle, .library-sign-in) {
+  font-size: 13px;
+}
+.library
+  .workspace-account
+  > button:not(.theme-toggle, .library-sign-in):hover {
+  color: var(--ink);
+}
+.library-sign-in {
+  background: var(--accent-fill);
+  color: var(--accent-text);
+  border-radius: 7px;
+  padding: 8px 15px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.offline-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--muted);
+  background: var(--surface-hover);
+}
+.offline-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.project-card[aria-disabled="true"] {
+  cursor: default;
+}
+.project-card[aria-disabled="true"]:hover,
+.project-card.cloud-only:hover {
+  border-color: var(--line);
+  transform: none;
+}
+.project-card.cloud-only {
+  border-style: dashed;
+  background: transparent;
+}
+.card-pull {
+  color: var(--green);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.card-pull:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 12px 2px 0;
+  font-size: 12px;
+}
+.card-actions button {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.card-actions button:hover:not(:disabled) {
+  color: var(--ink);
+}
+.card-note {
+  margin: 10px 2px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--danger);
+}
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 14px 22px;
+}
+.empty-actions > button:not(.primary-action) {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.library button:focus-visible,
+.library a:focus-visible,
+dialog button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* Tailwind's reset removes the margin that centres a modal dialog. */
+dialog:modal {
+  margin: auto;
+}
+
+/* ---- New project, settings --------------------------------------------- */
+.create-project-dialog {
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+.project-where {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 6px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.project-where legend {
+  margin: 12px 0 9px;
+  padding: 0;
+}
+.create-project-dialog .project-where label {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.create-project-dialog .project-where label:has(input:checked) {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+.create-project-dialog .project-where label[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.65;
+}
+.create-project-dialog .project-where input {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  padding: 0;
+  accent-color: var(--accent-fill);
+}
+.project-where strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+.project-where small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.settings-label {
+  margin: 25px 0 9px;
+  color: var(--ink) !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+.settings-path code {
+  display: block;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font:
+    11px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.settings-path + p {
+  margin-top: 9px;
+}
+.settings-version {
+  margin-top: 16px;
+}
+
+/* ---- Editor ------------------------------------------------------------- */
+/* The header holds the way back to the library, version control and export.
+   On the web it scrolls away with the page. In a desktop window that makes
+   those controls seem to be missing: the toolbar and sidebar stay put, and
+   macOS shows no scrollbar to hint that anything is above. So here it stays
+   pinned, with the formatting toolbar pinned beneath it. Below 751px the
+   shared styles let the header grow and wrap, so it scrolls as on the web. */
+@media (min-width: 751px) {
+  .editor-shell header {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+  }
+  .editor-shell .toolbar {
+    top: 70px;
+  }
+  .editor-shell.focus .toolbar {
+    top: 0;
+  }
+  /* Keep the caret clear of the pinned bars when the page follows it. */
+  html:has(.editor-shell) {
+    scroll-padding-top: 134px;
+    scroll-padding-bottom: 50px;
+  }
+  html:has(.editor-shell.focus) {
+    scroll-padding-top: 64px;
+  }
+}
+
+/* ---- Opening a project -------------------------------------------------- */
+.opening {
+  position: relative;
+}
+.opening > p {
+  position: fixed;
+  inset: auto 0 12vh;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- Sync --------------------------------------------------------------- */
+.sync-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 11px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--ink);
+  background: var(--surface);
+}
+.sync-trigger > span {
+  display: inline-block;
+  line-height: 1;
+}
+.sync-trigger[data-tone="pending"] {
+  border-color: var(--green);
+  color: var(--green);
+}
+.sync-trigger[data-tone="offline"] {
+  color: var(--muted);
+}
+.sync-trigger[data-tone="busy"] > span {
+  animation: sync-spin 1s linear infinite;
+}
+@keyframes sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+dialog.sync-dialog {
+  width: 540px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+dialog.sync-dialog.wide {
+  width: 900px;
+}
+.sync-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.sync-heading h2 {
+  margin: 10px 0 0;
+}
+.sync-heading > button {
+  font-size: 24px;
+  line-height: 1;
+  color: var(--muted);
+}
+.sync-dialog h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 18px 0 8px;
+}
+.sync-lede {
+  margin: 14px 0;
+}
+.sync-branches,
+.sync-result,
+.sync-attention {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.sync-branches li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.sync-branches li[data-state="synced"] {
+  color: var(--muted);
+}
+.sync-branches li[data-state="synced"] > span:last-child::before {
+  content: "✓ ";
+  color: var(--green);
+}
+p.sync-result {
+  display: block;
+  font-size: 13px;
+  color: var(--ink);
+}
+ul.sync-result li {
+  position: relative;
+  padding-left: 20px;
+  color: var(--ink);
+}
+ul.sync-result li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--green);
+}
+.sync-attention li {
+  padding: 9px 11px;
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+.sync-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 28px 0 12px;
+  font-size: 13px !important;
+  color: var(--ink) !important;
+}
+.sync-spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--line);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: sync-spin 0.8s linear infinite;
+}
+.sync-dialog .vc-warning,
+.account-dialog .vc-warning {
+  margin: 14px 0;
+  color: var(--ink);
+}
+.sync-dialog .vc-warning[role="alert"],
+.account-dialog .vc-warning[role="alert"] {
+  color: var(--danger);
+}
+.sync-conflict .vc-description {
+  margin-bottom: 14px;
+}
+.sync-conflict .vc-section-title {
+  margin-top: 22px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sync-spinner,
+  .sync-trigger[data-tone="busy"] > span {
+    animation-duration: 4s;
+  }
+}
+
+/* A revision the cloud doesn't have yet, in the history graph. */
+.vc-log-message small.vc-log-tag {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--green);
+}
+
+/* ---- Account ------------------------------------------------------------ */
+dialog.account-dialog {
+  width: 430px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+.account-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 4px 26px 24px 0;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--surface-hover);
+}
+.account-tabs button {
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.account-tabs button[aria-pressed="true"] {
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px #0003;
+}
+.account-dialog h2 + p {
+  margin-bottom: 18px;
+}
+.account-agreement {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 0 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.account-agreement input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--accent-fill);
+}
+.account-agreement .vc-link {
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.account-google {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.account-google:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.account-note {
+  margin-top: 10px;
+}
+.account-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.account-divider::before,
+.account-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.account-form {
+  display: grid;
+  gap: 14px;
+}
+.account-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.account-form input {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+.account-form input:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+.account-form .form-error {
+  margin: 0;
+}
+.account-form .form-error:empty {
+  display: none;
+}
+.account-form .primary-action {
+  padding: 11px;
+  font-size: 13px;
+}
+.account-dialog button:disabled {
+  cursor: default;
+}
+
+/* ---- Terms and privacy, read inside the app ----------------------------- */
+dialog.legal-dialog {
+  width: min(820px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 48px);
+  padding: 8px 34px;
+  overflow: auto;
+}
+.legal-dialog .legal-content {
+  padding-block: 26px;
+  font-size: 14px;
+}
+.legal-dialog .legal-content p {
+  color: var(--ink);
+  font-size: inherit;
+}
+.legal-dialog .legal-content a {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.legal-dialog .close {
+  position: sticky;
+  top: 6px;
+  float: right;
+  right: auto;
+}

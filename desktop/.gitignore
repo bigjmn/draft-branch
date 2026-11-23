@@ -1,0 +1,10 @@
+node_modules/
+dist/
+release/
+# Generated from the installed PDF.js version
+/src/renderer/public/pdfjs/
+.env
+.env.*
+!.env.example
+# Apple credentials for notarizing the Mac build (see README.md)
+electron-builder.env

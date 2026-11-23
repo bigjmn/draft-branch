@@ -12,6 +12,12 @@ firebase-debug.log
 functions/lib/
 functions/node_modules/
 
+# Desktop app (desktop/README.md)
+desktop/node_modules/
+desktop/dist/
+desktop/release/
+desktop/src/renderer/public/pdfjs/
+
 # Local credentials and signing keys
 *.pem
 *.key
@@ -26,3 +32,6 @@ credentials.json
 
 # Firebase emulator secret overrides
 **/.secret.local
+
+# Generated from the installed PDF.js version
+/public/pdfjs/
