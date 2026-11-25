@@ -1,0 +1,134 @@
+/* Title page. Laid out like a standard screenplay cover: 1-inch margins, the
+   title 16 lines down, two blank lines between title, credit and author, and the
+   contact block at the left ending three lines above the bottom margin. */
+.title-page-sheet {
+  width: fit-content;
+  margin: auto;
+  zoom: var(--page-zoom);
+}
+.page.title-page {
+  display: flex;
+  flex-direction: column;
+  height: var(--script-page-height);
+  padding: var(--script-margin-top) 1in var(--script-margin-bottom) 1in;
+  font-family: var(--font-screenplay);
+  font-size: var(--script-font-size);
+  line-height: var(--script-line-height);
+}
+.title-page-top {
+  display: grid;
+  gap: calc(var(--script-line-height) * 2);
+  margin-top: calc(var(--script-line-height) * 16);
+  text-align: center;
+}
+.title-page-field {
+  display: block;
+  width: 100%;
+  min-height: var(--script-line-height);
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  text-align: inherit;
+}
+.title-page-contact {
+  margin-top: auto;
+  margin-bottom: calc(var(--script-line-height) * 3);
+  text-align: left;
+}
+div.title-page-field[data-empty] {
+  display: none;
+}
+textarea.title-page-field {
+  border: 0;
+  border-radius: var(--script-active-radius);
+  background: transparent;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+}
+textarea.title-page-field:hover {
+  background: color-mix(
+    in srgb,
+    var(--script-active-background) 55%,
+    transparent
+  );
+}
+textarea.title-page-field:focus {
+  background: var(--script-active-background);
+}
+textarea.title-page-field::placeholder {
+  color: var(--script-placeholder);
+  opacity: 1;
+}
+/* The screenplay stays laid out (and paginated) while the title page shows. */
+.screenplay-away {
+  position: absolute;
+  inset: 0 auto auto 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Printed only when "Include title page" was chosen. */
+.print-title-page {
+  display: none !important;
+}
+
+/* Sidebar: Title page and Screenplay. */
+.documents {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 31px;
+}
+.documents .document {
+  margin: 0;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.documents .document:not(.active) {
+  background: transparent;
+}
+.documents .document:not(.active):hover {
+  background: color-mix(
+    in srgb,
+    var(--surface-hover, #f4f4f5) 50%,
+    transparent
+  );
+}
+
+@media print {
+  .title-page-sheet {
+    display: none !important;
+  }
+  .screenplay-away {
+    position: static;
+    height: auto;
+    overflow: visible;
+    visibility: visible;
+  }
+  .editor-shell[data-print-title] .print-title-page {
+    display: flex !important;
+    margin: 0;
+    box-shadow: none;
+    break-after: page;
+  }
+}
+
+/* Export dialog. */
+.export-title-page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.export-title-page input {
+  margin: 0;
+  accent-color: var(--green, #0f766e);
+}

@@ -499,6 +499,34 @@ dialog.account-dialog {
   outline: 2px solid var(--green);
   outline-offset: 1px;
 }
+.account-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.account-form .account-forgot {
+  font-size: 11px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.account-reset-sent {
+  display: grid;
+  gap: 10px;
+}
+.account-reset-sent p {
+  margin: 0;
+}
+.account-reset-sent .vc-link {
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.account-back {
+  margin-top: 18px;
+  font-size: 12px;
+}
 .account-form .form-error {
   margin: 0;
 }

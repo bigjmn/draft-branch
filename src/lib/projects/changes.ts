@@ -1,7 +1,9 @@
 import { sameScreenplayElement } from "./element-equality";
 import type { Draft, ScriptBlock } from "@/lib/editor/types";
+import { TITLE_PAGE_FIELDS } from "./merge";
 export interface DraftChange {
   id: string;
+  /** The screenplay title or a title page field: not a script element. */
   isTitle?: boolean;
   kind: "added" | "removed" | "modified" | "moved";
   before?: ScriptBlock;
@@ -26,6 +28,22 @@ export function draftChanges(before: Draft, after: Draft): DraftChange[] {
       before: { id: "title", type: "action", text: before.title },
       after: { id: "title", type: "action", text: after.title },
     });
+  for (const field of TITLE_PAGE_FIELDS) {
+    const from = before.titlePage?.[field] ?? "",
+      to = after.titlePage?.[field] ?? "";
+    if (from !== to)
+      changes.push({
+        id: `titlepage:${field}`,
+        isTitle: true,
+        kind: !from ? "added" : !to ? "removed" : "modified",
+        ...(from
+          ? { before: { id: `titlepage:${field}`, type: "action", text: from } }
+          : {}),
+        ...(to
+          ? { after: { id: `titlepage:${field}`, type: "action", text: to } }
+          : {}),
+      });
+  }
   for (const b of after.blocks) {
     const a = old.get(b.id);
     if (!a) changes.push({ id: b.id, kind: "added", after: b });

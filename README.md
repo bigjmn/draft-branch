@@ -179,11 +179,20 @@ The Enter sequence is defined in `src/lib/editor/types.ts`:
 
 Shot is in neither group: it is set from the toolbar, and `Tab` on a shot returns to Action. Changing an element to a parenthetical, by `Tab` or the toolbar, adds the enclosing parentheses and keeps the caret inside them. Changing a parenthetical to another type removes them. Pressing `Enter` before a parenthetical's closing `)` keeps the `)` on the parenthetical line.
 
+### Title page
+
+The sidebar's **Manuscript** section lists **Title page** above **Screenplay**. Opening a project always shows the screenplay. The title page is laid out like a standard cover: 1-inch margins, the title 16 lines down, the credit (“written by”) and author two blank lines apart under it, and a contact block at the bottom left.
+
+A new project's title page uses the project title in capitals (or UNTITLED), “written by”, the owner's profile name and the placeholder lines Company / Address / Phone / Email. Renaming the project later doesn't change it. The title page is part of the draft, so it's saved, committed, branched, diffed and merged with the screenplay; both sides changing the same field is a merge conflict for that field. Drafts made before title pages existed show the default until someone edits it.
+
 ### Exporting
 
-- **Fountain:** portable text with explicit screenplay element markers.
-- **JSON:** the current title, ordered blocks, block IDs, and element types.
-- **Print / Save as PDF:** uses the browser's print dialog. Choose US Letter, 100% scale, and disable browser headers and footers.
+The export dialog's **Include title page** checkbox is off each time it opens.
+
+- **Fountain:** portable text with explicit screenplay element markers. With the title page: Title, Credit, Author and Contact keys first.
+- **Final Draft (.fdx):** element types, plus a `<TitlePage>` when included. Importing an FDX reads its title page back.
+- **JSON:** the current title, title page, ordered blocks, block IDs, and element types. Always includes the title page.
+- **Print / Save as PDF:** uses the browser's print dialog, with the title page as the first page when included. Choose US Letter, 100% scale, and disable browser headers and footers.
 
 Fountain and JSON **import are not implemented**. A JSON export is a useful backup, but there is not yet a restore-file control in the UI. PDF generation is currently browser-based, not a dedicated rendering service.
 
@@ -317,11 +326,21 @@ interface ScriptBlock {
   text: string;
 }
 
+interface TitlePage {
+  title: string;
+  credit: string;
+  authors: string;
+  contact: string;
+}
+
 interface Draft {
   title: string;
   blocks: ScriptBlock[];
+  titlePage?: TitlePage; // absent on drafts from before title pages
 }
 ```
+
+A snapshot only has a `titlePage` key when there is one, so revisions made before title pages keep their Git object ids.
 
 Block IDs survive saving and loading. Array order determines document order. Scene headings are currently blocks in this flat array; scenes are not yet separate canonical records. The `Scene` type used by the outline is derived navigation metadata.
 

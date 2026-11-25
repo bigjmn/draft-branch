@@ -25,6 +25,28 @@ test("FDX preserves types, Unicode, escaped text and text runs", () => {
     })),
     result.draft.blocks.map(({ type, text }) => ({ type, text })),
   );
+  // A title-only cover isn't treated as a title page.
+  assert.equal(result.draft.titlePage, undefined);
+});
+test("FDX title pages round-trip", () => {
+  const titlePage = {
+    title: "THIS HOUSE IS THE WORST",
+    credit: "written by",
+    authors: "Jesse Nicholas\nSomeone Else",
+    contact: "J Nicks Productions\n130 Hope St.",
+  };
+  const draft = {
+    title: "House",
+    blocks: [{ id: "a", type: "scene" as const, text: "INT. HOUSE - DAY" }],
+    titlePage,
+  };
+  const back = parseFdx(toFdx(draft, { titlePage: true })).draft;
+  assert.deepEqual(back.titlePage, titlePage);
+  assert.equal(back.title, "THIS HOUSE IS THE WORST");
+  // Without the title page the file name supplies the title.
+  const bare = parseFdx(toFdx(draft), "House.fdx").draft;
+  assert.equal(bare.title, "House");
+  assert.equal(bare.titlePage, undefined);
 });
 test("FDX rejects entities, wrong roots and empty scripts", () => {
   for (const xml of [

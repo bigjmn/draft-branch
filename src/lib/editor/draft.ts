@@ -1,5 +1,6 @@
 import { type Draft, isElementType } from "./types";
 import { toFdx } from "./fdx";
+import { fountainTitlePage, parseTitlePage, titlePageOf } from "./title-page";
 export type ExportFormat = "fountain" | "json" | "fdx";
 
 /** Accepts the original prototype's saved drafts without changing its storage key. */
@@ -37,7 +38,9 @@ export function parseDraft(raw: string): Draft {
     ids.add(block.id);
     return { id: block.id, type: block.type, text: block.text };
   });
-  return { title: value.title, blocks };
+  const titlePage =
+    "titlePage" in value ? parseTitlePage(value.titlePage) : undefined;
+  return { title: value.title, blocks, ...(titlePage ? { titlePage } : {}) };
 }
 
 export function wordCount(draft: Draft): number {
@@ -48,8 +51,19 @@ export function wordCount(draft: Draft): number {
   return text ? text.split(/\s+/u).length : 0;
 }
 
-export function toFountain(draft: Draft): string {
-  let output = `Title: ${draft.title.replace(/[\r\n]+/g, " ")}\n\n`;
+/** Export options. The title page is left out unless asked for. */
+export interface ExportOptions {
+  titlePage?: boolean;
+  /** Fills in the title page of a draft that predates title pages. */
+  author?: string;
+}
+
+export function toFountain(draft: Draft, options: ExportOptions = {}): string {
+  // Each element below starts with its blank line, which also ends the title page.
+  const cover = options.titlePage
+    ? fountainTitlePage(titlePageOf(draft, options.author))
+    : "";
+  let output = cover;
   for (const block of draft.blocks) {
     let text = block.text;
     if (["scene", "shot", "character", "transition"].includes(block.type))
@@ -65,16 +79,22 @@ export function toFountain(draft: Draft): string {
       text +
       "\n";
   }
-  return output;
+  // Without a title page the script starts at its first element.
+  return cover ? output : output.replace(/^\n/, "");
 }
 
-export function downloadDraft(draft: Draft, format: ExportFormat): void {
+/** JSON backups always carry the title page; FDX and Fountain only when asked. */
+export function downloadDraft(
+  draft: Draft,
+  format: ExportFormat,
+  options: ExportOptions = {},
+): void {
   const content =
     format === "json"
       ? JSON.stringify(draft, null, 2)
       : format === "fdx"
-        ? toFdx(draft)
-        : toFountain(draft);
+        ? toFdx(draft, options)
+        : toFountain(draft, options);
   const url = URL.createObjectURL(
     new Blob([content], {
       type:

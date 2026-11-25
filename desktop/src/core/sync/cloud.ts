@@ -1,7 +1,13 @@
 /** What sync needs from DraftBranch cloud. The app implements this with the
  * same callable functions and Firestore reads the web app uses; tests implement
  * it with an in-memory model of the backend. */
-import type { CommitResult, MergeNote, Role, SaveResult } from "../types";
+import type {
+  CommitResult,
+  EditorOptions,
+  MergeNote,
+  Role,
+  SaveResult,
+} from "../types";
 
 export interface CloudCommit {
   oid: string;
@@ -20,6 +26,9 @@ export interface CloudBranch {
   name: string;
   head: string;
   protected: boolean;
+  createdBy?: string | null;
+  /** Set on an editor's dedicated branch. */
+  dedicatedTo?: string | null;
 }
 /** The signed-in account's working draft on a branch, or the branch head when
  * it has none (version 0). */
@@ -33,7 +42,9 @@ export interface CloudDraft {
 export interface CloudApi {
   readonly uid: string;
   /** Null when this account cannot open the project (removed, or deleted). */
-  access(projectId: string): Promise<{ title: string; role: Role } | null>;
+  access(
+    projectId: string,
+  ): Promise<{ title: string; role: Role; options?: EditorOptions } | null>;
   branches(projectId: string): Promise<CloudBranch[]>;
   commits(projectId: string): Promise<CloudCommit[]>;
   commit(projectId: string, oid: string): Promise<CloudCommit | null>;

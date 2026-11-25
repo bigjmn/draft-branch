@@ -1,4 +1,8 @@
 "use client";
+import type {
+  BranchAccessInfo,
+  MemberAccess,
+} from "@/lib/projects/permissions";
 import { readStoredValue } from "@/lib/storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseDraft } from "@/lib/editor/draft";
@@ -15,6 +19,13 @@ export interface EditorProject {
   initial: CloudDraft;
   branch: string;
   role: string;
+  /** Your membership: role plus editor options. */
+  member?: MemberAccess;
+  /** The open branch: protected, who made it, who it's dedicated to. */
+  branchInfo?: BranchAccessInfo;
+  /** You can write in the project but not on this branch: the pages are
+   * read-only, while branching and merging stay available. */
+  locked?: boolean;
 }
 /** Save one version at a time. Never retry a conflict by overwriting newer work. */
 export function useProjectDraft(project: EditorProject) {

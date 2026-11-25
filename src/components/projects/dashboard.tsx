@@ -1,4 +1,5 @@
 "use client";
+import { ROLE_LABELS } from "@/lib/projects/permissions";
 import { BetaBadge } from "@/components/ui/beta-badge";
 import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 
@@ -11,6 +12,8 @@ import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useRedirect } from "@/components/auth/use-redirect";
+import { debugLog, describeUser, watchSlow } from "@/lib/debug";
 import { ThemeToggle } from "@/components/theme/theme-provider";
 import { firebaseAuth } from "@/lib/firebase/client";
 import {
@@ -23,11 +26,17 @@ import {
 import { projectHref } from "@/lib/projects/routes";
 export function Dashboard() {
   const { user, loading } = useAuth();
-  const router = useRouter();
   useEffect(() => {
-    if (!loading && (!user || user.isAnonymous))
-      router.replace(user ? "/editor" : "/");
-  }, [user, loading, router]);
+    debugLog(
+      "route",
+      `dashboard: ${loading ? "waiting for sign-in state" : user && !user.isAnonymous ? "showing projects" : "leaving"}`,
+      describeUser(user),
+    );
+  }, [loading, user]);
+  useRedirect(
+    loading || (user && !user.isAnonymous) ? null : user ? "/editor" : "/",
+    user ? "guest opened the dashboard" : "signed out on the dashboard",
+  );
   if (loading || !user || user.isAnonymous) return <TypewriterLoader />;
   return (
     <ProjectList
@@ -49,15 +58,22 @@ function ProjectList({ name }: { name: string }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const request = useRef<{ title: string; id: string } | null>(null);
   const inFlight = useRef(false);
-  useEffect(
-    () =>
-      watchProjects(setProjects, () =>
+  useEffect(() => {
+    const done = watchSlow("data", "dashboard: project list");
+    return watchProjects(
+      (list) => {
+        done(`${list.length} projects`);
+        setProjects(list);
+      },
+      (failure) => {
+        done("failed");
+        console.error("[data] dashboard: project list failed", failure);
         setError(
           "We couldn’t load your projects. Check your connection and try reloading.",
-        ),
-      ),
-    [],
-  );
+        );
+      },
+    );
+  }, []);
   async function create(event: FormEvent) {
     event.preventDefault();
     if (inFlight.current || !title.trim()) return;
@@ -205,7 +221,7 @@ function ProjectList({ name }: { name: string }) {
                     Screenplay ·{" "}
                     {p.role === "owner"
                       ? "Owned by you"
-                      : `Shared with you · ${p.role}`}
+                      : `Shared with you · ${ROLE_LABELS[p.role] ?? p.role}`}
                   </p>
                   <div className="project-card-bottom">
                     <span>⑂ main</span>
@@ -259,8 +275,8 @@ function ProjectList({ name }: { name: string }) {
           <div className="eyebrow">A NEW BEGINNING</div>
           <h2>Create a project</h2>
           <p>
-            Start with a blank screenplay or import an FDX or PDF file. Only you can
-            access it until you invite someone.
+            Start with a blank screenplay or import an FDX or PDF file. Only you
+            can access it until you invite someone.
           </p>
           <label htmlFor="project-title">Project title</label>
           <input

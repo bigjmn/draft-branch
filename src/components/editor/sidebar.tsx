@@ -4,8 +4,12 @@ import { signOut } from "firebase/auth";
 import { useAuth } from "@/components/auth/auth-provider";
 import type { Scene } from "@/lib/editor/types";
 import { firebaseAuth } from "@/lib/firebase/client";
+export type EditorSection = "screenplay" | "titlePage";
 interface Props {
   readOnly?: boolean;
+  /** Which manuscript document the editor shows. */
+  section: EditorSection;
+  onSection: (section: EditorSection) => void;
   title: string;
   scenes: Scene[];
   selectedId: string | null;
@@ -17,6 +21,8 @@ interface Props {
 }
 export function Sidebar({
   readOnly = false,
+  section,
+  onSection,
   title,
   scenes,
   selectedId,
@@ -43,11 +49,27 @@ export function Sidebar({
         <div className="project-detail">Feature screenplay</div>
       </div>
       <div className="sidebar-label">
-        MANUSCRIPT <span>01</span>
+        MANUSCRIPT <span>02</span>
       </div>
-      <a href="#canvas" className="document active">
-        <span>▤</span> Screenplay <span className="dot" />
-      </a>
+      <nav className="documents" aria-label="Manuscript">
+        {(
+          [
+            ["titlePage", "▢", "Title page"],
+            ["screenplay", "▤", "Screenplay"],
+          ] as const
+        ).map(([value, icon, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={`document${section === value ? " active" : ""}`}
+            aria-current={section === value ? "page" : undefined}
+            onClick={() => onSection(value)}
+          >
+            <span>{icon}</span> {label}
+            {section === value && <span className="dot" />}
+          </button>
+        ))}
+      </nav>
       <div className="scene-header">
         <span>SCENE OUTLINE</span>
         <button

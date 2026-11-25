@@ -23,7 +23,9 @@ import { ProjectComments } from "./project-comments";
 import { FdxImportButton } from "./fdx-import";
 import { EditorCanvas, type CanvasHandle } from "./editor-canvas";
 import { EditorDialog, type DialogKind } from "./editor-dialog";
-import { Sidebar } from "./sidebar";
+import { Sidebar, type EditorSection } from "./sidebar";
+import { TitlePageView } from "./title-page-view";
+import { titlePageOf, type TitlePageField } from "@/lib/editor/title-page";
 import { Toolbar } from "./toolbar";
 import { useDraft } from "./use-draft";
 import { useProjectDraft, type EditorProject } from "./use-project-draft";
@@ -39,6 +41,9 @@ import {
   type Branch,
 } from "@/lib/projects/client";
 import { VersionControl, type VersionControlOptions } from "./version-control";
+import { CommentMargin } from "./comment-margin";
+import { commenterName, useBranchComments } from "@/lib/projects/comments";
+import { canCommentOn, canModerateComments } from "@/lib/projects/permissions";
 
 /** Lets another shell host the editor without forking it. The desktop app
  * (desktop/) passes this; the web app leaves it out and renders as before. */
@@ -101,7 +106,7 @@ export function ReadOnlyEditor({
       cloud
       project={project}
       readOnly
-      reader={controls}
+      reader={project.locked ? undefined : controls}
       host={host}
     />
   );
@@ -151,6 +156,34 @@ export function EditorView({
   const collaboration = host?.collaboration !== false;
   const { user } = useAuth();
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [openNote, setOpenNote] = useState<string | null>(null);
+  const commentHost = useRef<HTMLDivElement>(null);
+  // Notes need a signed-in project member; invitation-link guests read only.
+  const member = project?.member;
+  const notes =
+    collaboration &&
+    !!project &&
+    !!member &&
+    !!user &&
+    !user.isAnonymous &&
+    !reader?.access;
+  const branchInfo = project?.branchInfo ?? {
+    name: project?.branch ?? "main",
+    protected: (project?.branch ?? "main") === "main",
+  };
+  const notePermissions = notes
+    ? {
+        uid: user!.uid,
+        authorName: commenterName(user!),
+        canComment: canCommentOn(member, branchInfo),
+        canModerate: canModerateComments(member),
+      }
+    : null;
+  const branchNotes = useBranchComments(
+    notes ? project!.id : undefined,
+    project?.branch,
+  );
+  const openNotes = branchNotes.comments.filter((c) => !c.resolved).length;
   const [signup, setSignup] = useState(false);
   const signupDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -167,7 +200,18 @@ export function EditorView({
   const [importGeneration, setImportGeneration] = useState(0);
   const [titleError, setTitleError] = useState("");
   const [toast, setToast] = useState("");
+  // Opening a project always starts on the screenplay.
+  const [section, setSection] = useState<EditorSection>("screenplay");
+  const [printTitle, setPrintTitle] = useState(false);
   const hydratedTitle = useRef(false);
+  // Fills in the title page of a draft from before title pages existed. Only
+  // the owner (or the writer of a local draft) is the presumed author.
+  const defaultAuthor =
+    project && project.role !== "owner"
+      ? ""
+      : user && !user.isAnonymous
+        ? (user.displayName ?? "")
+        : (host?.guest?.name ?? "");
 
   useEffect(() => {
     if (!draft) return;
@@ -211,52 +255,82 @@ export function EditorView({
     },
     [draft, update],
   );
-  const onExport = (format: ExportFormat) => {
-    if (draft) downloadDraft(draft, format);
+  useEffect(() => {
+    if (!printTitle) return;
+    const done = () => setPrintTitle(false);
+    window.addEventListener("afterprint", done);
+    return () => window.removeEventListener("afterprint", done);
+  }, [printTitle]);
+  const onExport = (format: ExportFormat, includeTitlePage: boolean) => {
+    if (draft)
+      downloadDraft(draft, format, {
+        titlePage: includeTitlePage,
+        author: defaultAuthor,
+      });
     setDialog(null);
     setToast("Your screenplay has been exported.");
   };
-  const onPrint = () => {
+  const onPrint = (includeTitlePage: boolean) => {
     setDialog(null);
+    setPrintTitle(includeTitlePage);
     canvas.current?.paginate();
     // Let React close the dialog before opening the browser print sheet.
     requestAnimationFrame(() => window.print());
   };
+  const showSection = (next: EditorSection) => {
+    if (next !== section)
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    setSection(next);
+  };
   if (!draft) return <TypewriterLoader />;
+  const titlePage = titlePageOf(draft, defaultAuthor);
+  const onTitlePage = (field: TitlePageField, value: string) =>
+    update({ ...draft, titlePage: { ...titlePage, [field]: value } });
+  const onTitle = section === "titlePage";
 
   return (
-    <div className={`editor-shell${focus ? " focus" : ""}`} data-zoom={zoom}>
+    <div
+      className={`editor-shell${focus ? " focus" : ""}`}
+      data-zoom={zoom}
+      data-print-title={printTitle || undefined}
+    >
       <Sidebar
         readOnly={readOnly}
+        section={section}
+        onSection={showSection}
         title={draft.title}
         scenes={layout.scenes}
         selectedId={selectedId}
-        onScene={(id) => canvas.current?.focus(id)}
+        onScene={(id) => {
+          showSection("screenplay");
+          // Focus once the screenplay is showing again.
+          requestAnimationFrame(() => canvas.current?.focus(id));
+        }}
         onAdd={() => canvas.current?.append("scene")}
         onHelp={() => setDialog("help")}
         guest={host?.guest}
       />
-      {commentsOpen &&
-        collaboration &&
-        project &&
-        user &&
-        !user.isAnonymous &&
-        !reader?.access && (
-          <ProjectComments
-            key={`${project.id}:${project.branch}`}
-            projectId={project.id}
-            branch={project.branch}
-            owner={project.role === "owner"}
-            selected={draft.blocks.find((b) => b.id === selectedId)}
-            blocks={draft.blocks}
-            onFocus={(id) => canvas.current?.focus(id)}
-            onClose={() => setCommentsOpen(false)}
-          />
-        )}
+      {commentsOpen && notes && (
+        <ProjectComments
+          branch={project!.branch}
+          comments={branchNotes.comments}
+          error={branchNotes.error}
+          blocks={draft.blocks}
+          onOpen={(id) => {
+            showSection("screenplay");
+            commentHost.current
+              ?.querySelector(`.block[data-id="${CSS.escape(id)}"]`)
+              ?.scrollIntoView({ block: "center", behavior: "smooth" });
+            setOpenNote(id);
+          }}
+          onClose={() => setCommentsOpen(false)}
+        />
+      )}
       <div id="app">
         <header>
           <div className="breadcrumb">
-            {draft.title} <span>/</span> <strong>Screenplay</strong>
+            {draft.title} <span>/</span>{" "}
+            <strong>{onTitle ? "Title page" : "Screenplay"}</strong>
           </div>
           <div className="header-actions">
             {host?.home ? (
@@ -284,7 +358,8 @@ export function EditorView({
             )}
             <VersionControl
               project={project}
-              readOnly={readOnly}
+              readOnly={readOnly && !project?.locked}
+              locked={!!project?.locked}
               reader={reader}
               draft={draft}
               saved={status === "saved"}
@@ -292,19 +367,15 @@ export function EditorView({
               canPublish={canPublish}
               options={host?.versionControl}
             />
-            {collaboration &&
-              project &&
-              user &&
-              !user.isAnonymous &&
-              !reader?.access && (
-                <button
-                  className="button"
-                  aria-expanded={commentsOpen}
-                  onClick={() => setCommentsOpen((value) => !value)}
-                >
-                  Comments
-                </button>
-              )}
+            {notes && (
+              <button
+                className="button"
+                aria-expanded={commentsOpen}
+                onClick={() => setCommentsOpen((value) => !value)}
+              >
+                Comments{openNotes ? ` (${openNotes})` : ""}
+              </button>
+            )}
             <ThemeToggle />
             <span id="saveStatus" role="status">
               {!readOnly && status === "saved" && <i />}
@@ -321,7 +392,13 @@ export function EditorView({
             {!readOnly && (
               <FdxImportButton
                 onImport={(next) => {
-                  update(next);
+                  // An FDX without a title page keeps the one you have.
+                  update({
+                    ...next,
+                    ...(next.titlePage || !draft.titlePage
+                      ? {}
+                      : { titlePage: draft.titlePage }),
+                  });
                   if (title.current) title.current.textContent = next.title;
                   setSelectedId(null);
                   setImportGeneration((value) => value + 1);
@@ -408,7 +485,7 @@ export function EditorView({
           </p>
         )}
         <Toolbar
-          readOnly={readOnly}
+          readOnly={readOnly || onTitle}
           type={type}
           zoom={zoom}
           focus={focus}
@@ -423,19 +500,47 @@ export function EditorView({
         )}
         <main id="canvas">
           <div className="paper-caption">
-            <span>SCREENPLAY</span>
+            <span>{onTitle ? "TITLE PAGE" : "SCREENPLAY"}</span>
             <span>US LETTER · 8.5 × 11 IN</span>
           </div>
-          <EditorCanvas
-            key={importGeneration}
-            readOnly={readOnly}
-            ref={canvas}
-            initialBlocks={draft.blocks}
-            onChange={onBlocks}
-            onSelection={onSelection}
-            onLayout={setLayout}
-          />
-          {!readOnly && (
+          {onTitle && (
+            <div className="title-page-sheet">
+              <TitlePageView
+                page={titlePage}
+                readOnly={readOnly}
+                onChange={onTitlePage}
+              />
+            </div>
+          )}
+          <TitlePageView page={titlePage} printOnly />
+          <div
+            className={`comment-canvas${onTitle ? " screenplay-away" : ""}`}
+            ref={commentHost}
+            aria-hidden={onTitle || undefined}
+          >
+            <EditorCanvas
+              key={importGeneration}
+              readOnly={readOnly}
+              ref={canvas}
+              initialBlocks={draft.blocks}
+              onChange={onBlocks}
+              onSelection={onSelection}
+              onLayout={setLayout}
+            />
+            {notePermissions && (
+              <CommentMargin
+                host={commentHost}
+                projectId={project!.id}
+                branch={project!.branch}
+                comments={branchNotes.comments}
+                permissions={notePermissions}
+                open={openNote}
+                onOpen={setOpenNote}
+                layoutKey={`${layout.pages}:${zoom}:${importGeneration}:${section}`}
+              />
+            )}
+          </div>
+          {!readOnly && !onTitle && (
             <button
               className="add-block"
               onClick={() => canvas.current?.append("action")}
@@ -443,9 +548,11 @@ export function EditorView({
               + Add a new element
             </button>
           )}
-          <div className="paper-note">
-            A place for the story. Everything else can wait.
-          </div>
+          {!onTitle && (
+            <div className="paper-note">
+              A place for the story. Everything else can wait.
+            </div>
+          )}
         </main>
         <footer>
           <span>
@@ -453,9 +560,11 @@ export function EditorView({
             {layout.pages} {layout.pages === 1 ? "page" : "pages"} ·{" "}
             {wordCount(draft)} words
           </span>
-          <span>{ELEMENT_LABELS[type]}</span>
+          <span>{onTitle ? "Title page" : ELEMENT_LABELS[type]}</span>
           <span>
-            {readOnly ? (
+            {project?.locked ? (
+              "You can’t edit this branch · Branch from it to make changes"
+            ) : readOnly ? (
               "Read-only access · All branches"
             ) : (
               <>

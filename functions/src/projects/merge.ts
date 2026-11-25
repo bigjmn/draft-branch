@@ -19,16 +19,40 @@ export interface MergeBlock {
   type: string;
   text: string;
 }
+/** The title page travels with the screenplay and merges field by field. */
+export interface MergeTitlePage {
+  title: string;
+  credit: string;
+  authors: string;
+  contact: string;
+}
+export const TITLE_PAGE_FIELDS = [
+  "title",
+  "credit",
+  "authors",
+  "contact",
+] as const;
+export type TitlePageField = (typeof TITLE_PAGE_FIELDS)[number];
+/** Longest text each title page field accepts. */
+export const TITLE_PAGE_LIMITS: Record<TitlePageField, number> = {
+  title: 500,
+  credit: 200,
+  authors: 1000,
+  contact: 2000,
+};
 export interface MergeDraft {
   title: string;
   blocks: MergeBlock[];
+  titlePage?: MergeTitlePage;
 }
 export type MergeSide = "target" | "source";
 export type Resolution = MergeSide | "both" | { text: string };
-export type ConflictKind = "title" | "content" | "delete" | "order" | "move";
+export type ConflictKind =
+  "title" | "titlepage" | "content" | "delete" | "order" | "move";
 export type ResolutionOption = MergeSide | "both" | "text";
 export interface MergeConflict {
-  /** Deterministic: "title", "block:<id>", "order:<anchor id|start>", "move:<id>". */
+  /** Deterministic: "title", "titlepage:<field>", "block:<id>",
+   * "order:<anchor id|start>", "move:<id>". */
   id: string;
   kind: ConflictKind;
   base?: MergeBlock | null;
@@ -57,6 +81,11 @@ const titleBlock = (text: string): MergeBlock => ({
   type: "title",
   text,
 });
+const titlePageBlock = (
+  field: TitlePageField,
+  text: string | undefined,
+): MergeBlock | null =>
+  text === undefined ? null : { id: field, type: "titlepage", text };
 
 export function resolutionAllowed(
   conflict: MergeConflict,
@@ -67,7 +96,11 @@ export function resolutionAllowed(
       conflict.options.includes("text") &&
       typeof value?.text === "string" &&
       value.text.length <=
-        (conflict.kind === "title" ? 200 : MAX_RESOLUTION_TEXT)
+        (conflict.kind === "title"
+          ? 200
+          : conflict.kind === "titlepage"
+            ? TITLE_PAGE_LIMITS[conflict.id.slice(10) as TitlePageField]
+            : MAX_RESOLUTION_TEXT)
     );
   return conflict.options.includes(value);
 }
@@ -132,6 +165,36 @@ export function mergeDrafts(
       if (choice === "source") title = source.title;
       else if (typeof choice === "object") title = choice.text;
     }
+  }
+
+  // Title page, field by field. A draft without one (made before title pages
+  // existed) takes the other side's.
+  let titlePage: MergeTitlePage | undefined;
+  if (target.titlePage || source.titlePage) {
+    const page = {} as MergeTitlePage;
+    for (const field of TITLE_PAGE_FIELDS) {
+      const b = base.titlePage?.[field],
+        t = target.titlePage?.[field],
+        s = source.titlePage?.[field];
+      let value = t;
+      if (t !== s && s !== b) {
+        if (t === b) value = s;
+        else {
+          const choice = decide({
+            id: `titlepage:${field}`,
+            kind: "titlepage",
+            base: titlePageBlock(field, b),
+            target: titlePageBlock(field, t),
+            source: titlePageBlock(field, s),
+            options: ["target", "source", "text"],
+          });
+          if (choice === "source") value = s;
+          else if (typeof choice === "object") value = choice.text;
+        }
+      }
+      page[field] = value ?? "";
+    }
+    titlePage = page;
   }
 
   // Content.
@@ -318,5 +381,9 @@ export function mergeDrafts(
   }
   if (!blocks.length)
     blocks.push({ id: freshId("merged-scene"), type: "scene", text: "" });
-  return { draft: { title, blocks }, conflicts, unresolved };
+  return {
+    draft: { title, blocks, ...(titlePage ? { titlePage } : {}) },
+    conflicts,
+    unresolved,
+  };
 }

@@ -144,6 +144,15 @@ function OpenProject({
           initial,
           branch: name,
           role: access,
+          // Notes in the margin follow the cloud membership.
+          ...(meta.cloud
+            ? {
+                member: {
+                  role: access,
+                  access: meta.cloud.options ?? null,
+                },
+              }
+            : {}),
         },
         meta,
         writerName: settings.writerName,
@@ -200,7 +209,8 @@ function Mounted({
   const cloud = !!meta.cloud;
   const revoked = meta.cloud?.access === "revoked";
   const unpublished = useUnpublished(projectRef, cloud);
-  const readOnly = project.role === "reviewer";
+  // Commenters and readers read; owners and editors write.
+  const readOnly = project.role !== "owner" && project.role !== "editor";
 
   // Signing out closes a pulled project: its copy belongs to that account.
   useEffect(() => {

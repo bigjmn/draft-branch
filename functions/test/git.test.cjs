@@ -122,8 +122,12 @@ test("validation rejects duplicate IDs, unsupported versions, oversized text and
   );
 });
 test("protected branches accept owners only, regular branches allow editors", () => {
-  assert.throws(() => assertPublish("editor", { protected: true }));
-  assert.throws(() => assertPublish("reviewer", { protected: false }));
-  assert.doesNotThrow(() => assertPublish("owner", { protected: true }));
-  assert.doesNotThrow(() => assertPublish("editor", { protected: false }));
+  const main = { name: "main", protected: true };
+  const draft = { name: "draft", protected: false };
+  const as = (role) => ({ role });
+  assert.throws(() => assertPublish(as("editor"), "u", main));
+  assert.throws(() => assertPublish(as("reviewer"), "u", draft));
+  assert.throws(() => assertPublish(as("commenter"), "u", draft));
+  assert.doesNotThrow(() => assertPublish(as("owner"), "u", main));
+  assert.doesNotThrow(() => assertPublish(as("editor"), "u", draft));
 });

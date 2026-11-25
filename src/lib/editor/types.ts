@@ -13,9 +13,20 @@ export interface ScriptBlock {
   type: ElementType;
   text: string;
 }
+/** The cover page, versioned with the screenplay. */
+export interface TitlePage {
+  title: string;
+  /** e.g. "written by". */
+  credit: string;
+  authors: string;
+  /** Bottom-left block: company, address, phone, email. */
+  contact: string;
+}
 export interface Draft {
   title: string;
   blocks: ScriptBlock[];
+  /** Missing on drafts made before title pages existed. */
+  titlePage?: TitlePage;
 }
 export interface Scene {
   id: string;

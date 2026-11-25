@@ -23,7 +23,7 @@ export { web };
 
 const CALL_TIMEOUT_MS = 45_000;
 const COMMIT_TIMEOUT_MS = 120_000;
-const ROLES: Role[] = ["owner", "editor", "reviewer"];
+const ROLES: Role[] = ["owner", "editor", "commenter", "reviewer"];
 
 const codeOf = (error: unknown): string =>
   error && typeof error === "object" && "code" in error
@@ -147,9 +147,20 @@ export function firebaseCloud(uid: string): CloudApi {
           !ROLES.includes(role)
         )
           return null;
+        const options = member.data()?.access;
         return {
           title: String(projectDoc.data().title ?? "Untitled screenplay"),
           role,
+          ...(role === "editor" && options && typeof options === "object"
+            ? {
+                options: {
+                  editMain: options.editMain === true,
+                  commentMain: options.commentMain !== false,
+                  branch:
+                    typeof options.branch === "string" ? options.branch : null,
+                },
+              }
+            : {}),
         };
       };
       try {
@@ -178,6 +189,8 @@ export function firebaseCloud(uid: string): CloudApi {
         name: String(row.data().name ?? row.id),
         head: String(row.data().head),
         protected: row.data().protected === true,
+        createdBy: (row.data().createdBy as string | undefined) ?? null,
+        dedicatedTo: (row.data().dedicatedTo as string | undefined) ?? null,
       }));
     },
     async commits(projectId) {

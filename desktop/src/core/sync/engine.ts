@@ -25,6 +25,10 @@ import {
   mergeDrafts,
 } from "../../../../functions/src/projects/merge";
 import {
+  type MemberAccess,
+  canEditBranch,
+} from "../../../../functions/src/projects/permissions";
+import {
   ancestors,
   firstParentChain,
   isAncestor,
@@ -41,7 +45,12 @@ import type {
   Role,
   SyncState,
 } from "../types";
-import { type CloudApi, type CloudCommit, CloudError } from "./cloud";
+import {
+  type CloudApi,
+  type CloudBranch,
+  type CloudCommit,
+  CloudError,
+} from "./cloud";
 
 export interface ConflictRequest {
   /** "revision": replaying an offline revision onto newer cloud revisions.
@@ -162,6 +171,10 @@ class SyncRun {
   private cloudOf = new Map<string, string>();
   private pid = "";
   private role: Role = "reviewer";
+  /** Role and editor options, for deciding which branches this account may write. */
+  private member: MemberAccess = { role: "reviewer" };
+  /** The cloud's branches at the last fetch: who made them, who they're for. */
+  private remoteInfo = new Map<string, CloudBranch>();
   /** Version of the account's cloud working draft, per branch. */
   private readonly versions = new Map<string, number>();
   /** Blob id of the text the cloud working draft holds, per branch. */
@@ -305,18 +318,29 @@ class SyncRun {
       return false;
     }
     this.role = access.role;
+    this.member = { role: access.role, access: access.options ?? null };
     const pending = meta.cloud!.pendingTitle;
     if (pending && access.role === "owner") {
       if (pending !== access.title)
         await this.cloud.renameProject(this.pid, pending);
       await this.local.setMeta({
         title: pending,
-        cloud: { role: access.role, access: "ok", pendingTitle: "" },
+        cloud: {
+          role: access.role,
+          options: access.options,
+          access: "ok",
+          pendingTitle: "",
+        },
       });
     } else
       await this.local.setMeta({
         ...(meta.title !== access.title ? { title: access.title } : {}),
-        cloud: { role: access.role, access: "ok", pendingTitle: "" },
+        cloud: {
+          role: access.role,
+          options: access.options,
+          access: "ok",
+          pendingTitle: "",
+        },
       });
     return true;
   }
@@ -325,6 +349,7 @@ class SyncRun {
     this.check();
     this.say("Checking for updates");
     const branches = await this.cloud.branches(this.pid);
+    this.remoteInfo = new Map(branches.map((b) => [b.name, b]));
     if (!branches.length)
       throw new Error("This cloud project has no branches.");
     const known = (cloudOid: string) => this.graph.has(this.toLocal(cloudOid));
@@ -588,8 +613,21 @@ class SyncRun {
       : [];
   }
 
+  /** Owners and editors write; commenters and readers only read. */
+  private writer() {
+    return this.role === "owner" || this.role === "editor";
+  }
+  /** May this account save and publish on the cloud branch? */
+  private mayEdit(name: string, fallback: { protected: boolean }) {
+    return canEditBranch(
+      this.member,
+      this.cloud.uid,
+      this.remoteInfo.get(name) ?? { name, ...fallback },
+    );
+  }
+
   private async pullDrafts() {
-    if (this.role === "reviewer") return;
+    if (!this.writer()) return;
     const wanted = new Set<string>([
       ...this.state.drafts.map((d) => d.branch),
       ...(this.options.focus ?? []),
@@ -688,7 +726,7 @@ class SyncRun {
   }
 
   private async publish() {
-    if (this.role === "reviewer") return;
+    if (!this.writer()) return;
     for (let round = 0; round < MAX_ROUNDS; round++) {
       this.check();
       for (const branch of [...this.state.branches])
@@ -783,12 +821,14 @@ class SyncRun {
           });
           continue;
         }
-        if (remote.protected && this.role !== "owner") {
+        if (!this.mayEdit(name, remote)) {
           this.failedBranches.add(name);
           this.attention({
             kind: "forbidden",
             branch: name,
-            message: `Only the owner can publish to ${name}. Your revisions stay on this device.`,
+            message: remote.protected
+              ? `You can’t publish to ${name}. Your revisions stay on this device; publish them on a branch of your own and open a merge request.`
+              : `You can’t publish to ${name}: it isn’t one of your branches. Your revisions stay on this device.`,
           });
           continue;
         }
@@ -913,7 +953,7 @@ class SyncRun {
   }
 
   private async pushDrafts() {
-    if (this.role === "reviewer") return;
+    if (!this.writer()) return;
     await this.refresh();
     const published = this.published();
     for (const draft of [...this.state.drafts]) {
@@ -922,6 +962,8 @@ class SyncRun {
       const remote = this.remote(name);
       if (!remote || this.blocked.has(name) || !this.versions.has(name))
         continue;
+      // The cloud keeps working drafts only where this account may edit.
+      if (!this.mayEdit(name, remote)) continue;
       const mine = await this.local.loadDraft(name);
       const myBlob = await this.blobOf(mine.draft);
       const version = this.versions.get(name)!;

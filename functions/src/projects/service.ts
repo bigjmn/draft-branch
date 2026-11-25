@@ -15,12 +15,13 @@ import {
   type CommitJob,
   type Role,
   MAX_DRAFT_BYTES,
+  assertBranchFrom,
   assertMergeInto,
   assertPublish,
   assertRequest,
   assertRole,
   authorName,
-  blankSnapshot,
+  newProjectSnapshot,
   branchId,
   fail,
   hash,
@@ -33,9 +34,18 @@ import {
   text,
   version,
 } from "./model";
+import {
+  type EditorAccess,
+  type MemberAccess,
+  DEFAULT_EDITOR_ACCESS,
+  canEditBranch,
+  editorAccess,
+} from "./permissions";
 
 const now = () => FieldValue.serverTimestamp();
-const MEMBERS: Role[] = ["owner", "editor", "reviewer"];
+const MEMBERS: Role[] = ["owner", "editor", "commenter", "reviewer"];
+/** Roles an owner can invite someone as, or switch a member to. */
+const INVITABLE: Role[] = ["editor", "commenter", "reviewer"];
 /** Commits shown in the version-control graph (newest first). */
 export const GRAPH_LIMIT = 300;
 const WRITERS: Role[] = ["owner", "editor"];
@@ -79,7 +89,11 @@ export class ProjectService {
     if (!project.exists || project.data()?.deleting)
       fail("not-found", "Project not found.");
     assertRole(member.data()?.role, roles);
-    return { project: project.data()!, role: member.data()!.role as Role };
+    return {
+      project: project.data()!,
+      role: member.data()!.role as Role,
+      member: member.data() as MemberAccess,
+    };
   }
   private async checkAccess(
     pid: string,
@@ -163,10 +177,11 @@ export class ProjectService {
     const data = record(input),
       title = text(data.title, "project title");
     const pid = requestKey(actor, data.requestId),
-      snapshot =
-        data.draft === undefined
-          ? blankSnapshot(title)
-          : parseSnapshot({ ...record(data.draft), title }),
+      snapshot = newProjectSnapshot(
+        title,
+        actor.name === "Writer" ? "" : actor.name,
+        data.draft,
+      ),
       fingerprint = hash(
         JSON.stringify(
           data.draft === undefined ? { title } : { title, snapshot },
@@ -272,7 +287,7 @@ export class ProjectService {
     );
     const ticket = this.project(pid).collection("uploads").doc(uploadId);
     return this.db.runTransaction(async (tx) => {
-      await this.access(tx, pid, actor, WRITERS);
+      const { member } = await this.access(tx, pid, actor, WRITERS);
       const [existing, branchDoc, commit, draft] = await tx.getAll(
         ticket,
         this.branch(pid, branch),
@@ -285,6 +300,7 @@ export class ProjectService {
       }
       if (!branchDoc.exists || !commit.exists)
         fail("not-found", "Branch or base revision not found.");
+      assertPublish(member, actor.uid, branchDoc.data() as Branch);
       if ((draft.data()?.version ?? 0) !== expectedVersion)
         fail("aborted", "The cloud draft changed. Reload before saving.");
       tx.create(ticket, {
@@ -345,16 +361,25 @@ export class ProjectService {
       const snapshotPath = `projects/${pid}/drafts/${uid}/${uploadId}.json`;
       await this.objects.put(snapshotPath, snapshot, "application/json");
       await this.db.runTransaction(async (tx) => {
-        const [latest, member, draft] = await tx.getAll(
+        const [latest, member, draft, branch] = await tx.getAll(
           ticketRef,
           this.member(pid, uid),
           this.draft(pid, uid, input.branchId),
+          this.branch(pid, input.branchId),
         );
         if (latest.data()?.status !== "awaiting_upload") return;
-        if (!WRITERS.includes(member.data()?.role)) {
+        if (
+          !WRITERS.includes(member.data()?.role) ||
+          !branch.exists ||
+          !canEditBranch(
+            member.data() as MemberAccess,
+            uid,
+            branch.data() as Branch,
+          )
+        ) {
           tx.update(ticketRef, {
             status: "rejected",
-            error: "Project access was removed.",
+            error: "Edit access to this branch was removed.",
             completedAt: now(),
           });
           return;
@@ -419,7 +444,7 @@ export class ProjectService {
     );
     const jobRef = this.project(pid).collection("operations").doc(operationId);
     return this.db.runTransaction(async (tx) => {
-      const { role } = await this.access(tx, pid, actor, WRITERS);
+      const { member } = await this.access(tx, pid, actor, WRITERS);
       const [job, branchDoc, draft] = await tx.getAll(
         jobRef,
         this.branch(pid, branch),
@@ -430,7 +455,7 @@ export class ProjectService {
         return { operationId, status: job.data()!.status };
       }
       if (!branchDoc.exists) fail("not-found", "Branch not found.");
-      assertPublish(role, branchDoc.data() as Branch);
+      assertPublish(member, actor.uid, branchDoc.data() as Branch);
       if (branchDoc.data()!.head !== expectedHead)
         fail("aborted", "Branch advanced. Bring in updates before committing.");
       if (
@@ -470,10 +495,10 @@ export class ProjectService {
       draftVersion: number;
     };
     try {
-      const { role } = await this.checkAccess(pid, job.actor, WRITERS);
+      const { member } = await this.checkAccess(pid, job.actor, WRITERS);
       const branchDoc = await this.branch(pid, job.branchId).get();
       if (!branchDoc.exists) fail("not-found", "Branch no longer exists.");
-      assertPublish(role, branchDoc.data() as Branch);
+      assertPublish(member, job.actor.uid, branchDoc.data() as Branch);
       if (branchDoc.data()!.head !== job.expectedHead)
         fail("aborted", "Branch advanced. No revision was published.");
       const bytes = await this.objects.get(job.snapshotPath);
@@ -497,7 +522,11 @@ export class ProjectService {
         );
         if (latestJob.data()?.status !== "queued") return;
         if (!branch.exists) fail("not-found", "Branch no longer exists.");
-        assertPublish(member.data()?.role, branch.data() as Branch);
+        assertPublish(
+          member.data() as MemberAccess | undefined,
+          job.actor.uid,
+          branch.data() as Branch,
+        );
         if (branch.data()!.head !== job.expectedHead)
           fail("aborted", "Branch advanced. No revision was published.");
         tx.set(this.project(pid).collection("commits").doc(revision.oid), {
@@ -550,8 +579,8 @@ export class ProjectService {
       key = requestKey(actor, data.requestId);
     const fingerprint = hash(JSON.stringify({ name, source, expectedHead }));
     const request = this.project(pid).collection("requests").doc(key);
-    return this.db.runTransaction(async (tx) => {
-      await this.access(tx, pid, actor, WRITERS);
+    const result = await this.db.runTransaction(async (tx) => {
+      const { member } = await this.access(tx, pid, actor, WRITERS);
       const [prior, sourceDoc, target] = await tx.getAll(
         request,
         this.branch(pid, source),
@@ -563,6 +592,7 @@ export class ProjectService {
       }
       if (target.exists) fail("already-exists", "Branch already exists.");
       if (!sourceDoc.exists) fail("not-found", "Source branch not found.");
+      assertBranchFrom(member, actor.uid, sourceDoc.data() as Branch);
       if (sourceDoc.data()!.head !== expectedHead)
         fail("aborted", "Source branch advanced.");
       tx.create(this.branch(pid, name), {
@@ -582,6 +612,32 @@ export class ProjectService {
       });
       return { branchId: name, head: expectedHead };
     });
+    // A new branch starts with its parent's comments. Safe to repeat.
+    await this.copyComments(pid, source, name);
+    return result;
+  }
+
+  /** Copy every comment on one branch to another, keeping authors and times.
+   * Copies have ids derived from the originals, so a retry writes nothing new. */
+  async copyComments(pid: string, from: string, to: string) {
+    const comments = await this.project(pid)
+      .collection("comments")
+      .where("branch", "==", from)
+      .get();
+    for (let i = 0; i < comments.docs.length; i += 400) {
+      const batch = this.db.batch();
+      for (const comment of comments.docs.slice(i, i + 400)) {
+        const copy = this.project(pid)
+          .collection("comments")
+          .doc(hash(`${to}:${comment.id}`).slice(0, 28));
+        batch.set(copy, {
+          ...comment.data(),
+          branch: to,
+          copiedFrom: comment.id,
+        });
+      }
+      await batch.commit();
+    }
   }
 
   async inviteMember(actor: Actor, input: unknown) {
@@ -590,9 +646,13 @@ export class ProjectService {
     const email = text(data.email, "email", 254).toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       fail("invalid-argument", "Invalid email.");
-    const role = data.role;
-    if (role !== "editor" && role !== "reviewer")
-      fail("invalid-argument", "Invite role must be editor or reviewer.");
+    const role = data.role as Role;
+    if (!INVITABLE.includes(role))
+      fail(
+        "invalid-argument",
+        "Invite role must be editor, commenter or reader.",
+      );
+    const { access, note, requireSignIn } = parseInviteOptions(role, data);
     let origin: URL;
     try {
       origin = new URL(this.publicOrigin);
@@ -609,12 +669,24 @@ export class ProjectService {
       fail("failed-precondition", "Sharing requires an HTTPS application URL.");
     const invitationId = requestKey(actor, data.requestId);
     const ref = this.project(pid).collection("invitations").doc(invitationId);
-    const fingerprint = hash(JSON.stringify({ email, role }));
+    const fingerprint = hash(
+      JSON.stringify({
+        email,
+        role,
+        access,
+        note,
+        ...(requireSignIn ? { requireSignIn } : {}),
+      }),
+    );
     const token = randomBytes(32).toString("hex");
     const quotaRef = this.db.doc(`invitationLimits/${actor.uid}`);
     return this.db.runTransaction(async (tx) => {
       const { project } = await this.access(tx, pid, actor, ["owner"]);
-      const [existing, quota] = await tx.getAll(ref, quotaRef);
+      const [existing, quota, dedicated] = await tx.getAll(
+        ref,
+        quotaRef,
+        this.branch(pid, access?.branch ?? "main"),
+      );
       if (existing.exists) {
         assertRequest(existing.data(), fingerprint);
         return {
@@ -623,6 +695,11 @@ export class ProjectService {
           status: existing.data()!.status,
         };
       }
+      if (access?.branch && dedicated.exists)
+        fail(
+          "already-exists",
+          `There’s already a branch called ${access.branch}. Choose another name for the dedicated branch.`,
+        );
       const freshWindow =
         !quota.exists || quota.data()!.windowStart < Date.now() - 3600000;
       const count = freshWindow ? 0 : quota.data()!.count;
@@ -642,6 +719,9 @@ export class ProjectService {
       tx.create(ref, {
         email,
         role,
+        ...(access ? { access } : {}),
+        ...(note ? { note } : {}),
+        ...(requireSignIn ? { requireSignIn: true } : {}),
         invitedBy: actor.uid,
         ownerName,
         status: "pending",
@@ -661,6 +741,9 @@ export class ProjectService {
           ownerName,
           title: project.title,
           role,
+          branch: access?.branch ?? null,
+          note,
+          requireSignIn,
           link,
           status: "queued",
           attempts: 0,
@@ -724,11 +807,28 @@ export class ProjectService {
           title: project.data()!.title as string,
           ownerName: String(invitation.ownerName || "The project owner"),
           role: invitation.role as Role,
+          ...(invitation.role === "editor"
+            ? {
+                access: editorAccess({
+                  role: "editor",
+                  access: invitation.access,
+                }),
+              }
+            : {}),
+          note: typeof invitation.note === "string" ? invitation.note : "",
+          requireSignIn: invitation.requireSignIn === true,
           expiresAt: invitation.expiresAt.toMillis() as number,
         };
       });
     const metadata = await check();
     if (!includeDraft) return metadata;
+    // The owner asked that only the invited, signed-in person can read: the
+    // link alone then opens the invitation but not the screenplay.
+    if (metadata.requireSignIn)
+      fail(
+        "permission-denied",
+        "Sign in with the invited email address and accept the invitation to read this project.",
+      );
     if (data.graph === true) {
       // Commit metadata only: messages, authors, parents. No screenplay text.
       const rows = await this.project(pid)
@@ -811,7 +911,7 @@ export class ProjectService {
         "Verify your email before accepting an invitation.",
       );
     const ref = this.project(pid).collection("invitations").doc(invitationId);
-    return this.db.runTransaction(async (tx) => {
+    const accepted = await this.db.runTransaction(async (tx) => {
       const [invite, project, member] = await tx.getAll(
         ref,
         this.project(pid),
@@ -828,7 +928,11 @@ export class ProjectService {
         invitation.acceptedBy === actor.uid &&
         member.exists
       )
-        return { projectId: pid, role: member.data()!.role };
+        return {
+          projectId: pid,
+          role: member.data()!.role,
+          branch: editorAccess(member.data() as MemberAccess).branch,
+        };
       if (
         invitation.status !== "pending" ||
         invitation.expiresAt.toMillis() <= Date.now()
@@ -841,9 +945,41 @@ export class ProjectService {
       assertRole(owner.data()?.role, ["owner"]);
       // An invitation cannot demote or promote an existing membership implicitly.
       const role = member.data()?.role ?? invitation.role;
+      const access: EditorAccess | null = member.exists
+        ? ((member.data()!.access as EditorAccess | undefined) ?? null)
+        : role === "editor"
+          ? editorAccess({ role, access: invitation.access })
+          : null;
+      // A dedicated branch is made from main when the editor first joins.
+      const dedicated = !member.exists && access?.branch ? access.branch : null;
+      if (dedicated) {
+        const [existing, main] = await tx.getAll(
+          this.branch(pid, dedicated),
+          this.branch(pid, "main"),
+        );
+        if (existing.exists && existing.data()!.dedicatedTo !== actor.uid)
+          fail(
+            "already-exists",
+            `A branch called ${dedicated} was created after you were invited. Ask the owner to invite you again with another branch name.`,
+          );
+        if (!existing.exists) {
+          if (!main.exists) fail("not-found", "The main branch is missing.");
+          tx.create(this.branch(pid, dedicated), {
+            name: dedicated,
+            head: main.data()!.head,
+            protected: false,
+            createdBy: actor.uid,
+            dedicatedTo: actor.uid,
+            sourceBranch: "main",
+            createdAt: now(),
+            updatedAt: now(),
+          });
+        }
+      }
       tx.set(this.member(pid, actor.uid), {
         uid: actor.uid,
         role,
+        ...(access ? { access } : {}),
         email: actor.email,
         displayName: actor.name,
         joinedAt: member.data()?.joinedAt ?? now(),
@@ -859,8 +995,10 @@ export class ProjectService {
         acceptedBy: actor.uid,
         acceptedAt: now(),
       });
-      return { projectId: pid, role };
+      return { projectId: pid, role, branch: access?.branch ?? null };
     });
+    if (accepted.branch) await this.copyComments(pid, "main", accepted.branch);
+    return accepted;
   }
 
   async removeMember(actor: Actor, input: unknown) {
@@ -888,14 +1026,21 @@ export class ProjectService {
     const data = record(input),
       pid = id(data.projectId),
       uid = id(data.uid);
-    if (data.role !== "editor" && data.role !== "reviewer")
-      fail("invalid-argument", "Choose Reader or Editor.");
+    if (!INVITABLE.includes(data.role as Role))
+      fail("invalid-argument", "Choose Reader, Commenter or Editor.");
     await this.db.runTransaction(async (tx) => {
       const { project } = await this.access(tx, pid, actor, ["owner"]);
       const member = await tx.get(this.member(pid, uid));
       if (!member.exists || uid === project.ownerUid)
         fail("failed-precondition", "Cannot change this member.");
-      tx.update(this.member(pid, uid), { role: data.role });
+      // An editor keeps the options they were invited with; someone becoming
+      // an editor here starts with the defaults.
+      tx.update(this.member(pid, uid), {
+        role: data.role,
+        ...(data.role === "editor" && !member.data()!.access
+          ? { access: DEFAULT_EDITOR_ACCESS }
+          : {}),
+      });
       tx.update(this.db.doc(`users/${uid}/projects/${pid}`), {
         role: data.role,
       });
@@ -922,12 +1067,17 @@ export class ProjectService {
     const data = record(input),
       pid = id(data.projectId),
       branch = branchId(data.branchId);
-    const { role } = await this.checkAccess(pid, actor);
+    const { member } = await this.checkAccess(pid, actor);
     const branchDoc = await this.branch(pid, branch).get();
     if (!branchDoc.exists) fail("not-found", "Branch not found.");
     const working = await this.draft(pid, actor.uid, branch).get();
     const head = branchDoc.data()!.head as string;
-    if (working.exists && role !== "reviewer") {
+    // Only someone who may edit the branch sees (and keeps) a working draft;
+    // everyone else reads its latest revision.
+    if (
+      working.exists &&
+      canEditBranch(member, actor.uid, branchDoc.data() as Branch)
+    ) {
       const saved = working.data()!;
       const bytes = await this.objects.get(saved.snapshotPath);
       if (hash(bytes) !== saved.contentHash)
@@ -1122,9 +1272,9 @@ export class ProjectService {
       assertRequest(prior.data(), fingerprint);
       return prior.data()!.result as { commitId: string; branchId: string };
     }
-    const { role } = await this.checkAccess(pid, actor, WRITERS);
+    const { member } = await this.checkAccess(pid, actor, WRITERS);
     const inputs = await this.mergeInputs(pid, source, target);
-    assertMergeInto(role, inputs.targetBranch);
+    assertMergeInto(member, actor.uid, inputs.targetBranch);
     if (
       inputs.sourceHead !== expectedSourceHead ||
       inputs.targetHead !== expectedTargetHead
@@ -1181,7 +1331,11 @@ export class ProjectService {
       if (!sourceDoc.exists || !targetDoc.exists)
         fail("not-found", "Branch no longer exists.");
       assertRole(member.data()?.role, WRITERS);
-      assertMergeInto(member.data()?.role, targetDoc.data() as Branch);
+      assertMergeInto(
+        member.data() as MemberAccess,
+        actor.uid,
+        targetDoc.data() as Branch,
+      );
       if (
         sourceDoc.data()!.head !== expectedSourceHead ||
         targetDoc.data()!.head !== expectedTargetHead
@@ -1319,7 +1473,8 @@ export class ProjectService {
   }
 }
 
-const RESOLUTION_KEY = /^(title|(block|order|move):[A-Za-z0-9_-]{1,128})$/;
+const RESOLUTION_KEY =
+  /^(title|titlepage:(title|credit|authors|contact)|(block|order|move):[A-Za-z0-9_-]{1,128})$/;
 function parseResolutions(value: unknown): Record<string, Resolution> {
   if (value === undefined) return {};
   const input = record(value);
@@ -1342,4 +1497,43 @@ function parseResolutions(value: unknown): Record<string, Resolution> {
     }
   }
   return result;
+}
+
+/** Validate the options an owner chose for an invitation. Editors get access
+ * options; every invitation may carry a short personal note. */
+export function parseInviteOptions(
+  role: Role,
+  data: Record<string, unknown>,
+): { access: EditorAccess | null; note: string; requireSignIn: boolean } {
+  const note =
+    data.note === undefined || data.note === ""
+      ? ""
+      : text(data.note, "note", 1000);
+  const flag = (value: unknown, fallback: boolean) => {
+    if (value === undefined) return fallback;
+    if (typeof value !== "boolean") fail("invalid-argument", "Invalid option.");
+    return value;
+  };
+  const requireSignIn = flag(data.requireSignIn, false);
+  if (role !== "editor") return { access: null, note, requireSignIn };
+  const branch =
+    data.branch === undefined || data.branch === null || data.branch === ""
+      ? null
+      : branchId(data.branch);
+  if (branch === "main")
+    fail(
+      "invalid-argument",
+      "Choose a name other than main for the dedicated branch.",
+    );
+  const access: EditorAccess = {
+    editMain: flag(data.editMain, false),
+    commentMain: flag(data.commentMain, true),
+    branch,
+  };
+  if (access.branch && access.editMain)
+    fail(
+      "invalid-argument",
+      "An editor with a dedicated branch edits only that branch, so they can’t also edit main.",
+    );
+  return { access, note, requireSignIn };
 }

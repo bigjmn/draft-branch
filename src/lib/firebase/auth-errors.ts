@@ -12,6 +12,8 @@ export function authErrorMessage(error: unknown): string | null {
       return null;
     case "auth/email-already-in-use":
       return "An account already exists for this email. Sign in instead.";
+    case "auth/missing-email":
+      return "Enter your email address.";
     case "auth/invalid-email":
       return "Enter a valid email address.";
     case "auth/weak-password":

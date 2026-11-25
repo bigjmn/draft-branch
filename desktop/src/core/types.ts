@@ -1,7 +1,13 @@
 /** Types shared by the main process, the renderer, and the sync engine. */
 import type { Snapshot } from "./snapshot";
 
-export type Role = "owner" | "editor" | "reviewer";
+export type Role = "owner" | "editor" | "commenter" | "reviewer";
+/** An editor's options, as the owner chose them (see functions/src/projects/permissions.ts). */
+export interface EditorOptions {
+  editMain?: boolean;
+  commentMain?: boolean;
+  branch?: string | null;
+}
 
 /** Projects made on this device, with no account. */
 export const LOCAL_SCOPE = "local";
@@ -14,6 +20,8 @@ export interface ProjectRef {
 export interface CloudLink {
   uid: string;
   role: Role;
+  /** An editor's options; absent for other roles. */
+  options?: EditorOptions;
   /** "revoked" once the cloud says this account can no longer open the project. */
   access: "ok" | "revoked";
   /** True once a pull has brought down every branch; the project can be opened. */

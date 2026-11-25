@@ -50,6 +50,22 @@ const samples: unknown[] = [
       { id: "g7", type: "transition", text: "CUT TO:" },
     ],
   },
+  {
+    title: "With a title page",
+    titlePage: {
+      contact: "J Nicks Productions\n130 Hope St.\r\n“Brooklyn” 🎬",
+      authors: "Jesse Nicholas & Ünïcödé",
+      credit: "written by",
+      title: "THIS HOUSE IS THE WORST",
+      extra: "dropped",
+    },
+    blocks: [{ id: "a", type: "scene", text: "INT. HOUSE - DAY" }],
+  },
+  {
+    title: "No title page",
+    titlePage: null,
+    blocks: [{ id: "a", type: "scene", text: "" }],
+  },
 ];
 
 test(
@@ -68,6 +84,33 @@ test(
       );
     }
     assert.deepEqual(device.blankSnapshot("T"), backend.blankSnapshot("T"));
+    for (const [title, author, draft] of [
+      ["Pilot", "Jesse Nicholas", undefined],
+      ["Untitled screenplay", "", undefined],
+      ["  ", "A\nB", undefined],
+      ["Imported", "Me", samples[1]],
+      [
+        "Own page",
+        "Me",
+        {
+          ...(samples[0] as object),
+          titlePage: {
+            title: "MINE",
+            credit: "by",
+            authors: "X",
+            contact: "",
+          },
+        },
+      ],
+    ] as const)
+      assert.equal(
+        device.serializeSnapshot(
+          device.newProjectSnapshot(title, author, draft),
+        ),
+        backend.serializeSnapshot(
+          backend.newProjectSnapshot(title, author, draft),
+        ),
+      );
     assert.equal(device.MAX_DRAFT_BYTES, backend.MAX_DRAFT_BYTES);
     assert.deepEqual([...device.ELEMENT_TYPES], [...backend.ELEMENT_TYPES]);
     const invalid: unknown[] = [
@@ -94,6 +137,31 @@ test(
       {
         title: "x",
         blocks: [{ id: "a", type: "scene", text: "y".repeat(100001) }],
+      },
+      {
+        title: "x",
+        blocks: [{ id: "a", type: "scene", text: "" }],
+        titlePage: { title: "T", credit: "by", authors: 3, contact: "" },
+      },
+      {
+        title: "x",
+        blocks: [{ id: "a", type: "scene", text: "" }],
+        titlePage: { title: "T", credit: "by", authors: "A" },
+      },
+      {
+        title: "x",
+        blocks: [{ id: "a", type: "scene", text: "" }],
+        titlePage: {
+          title: "T".repeat(501),
+          credit: "",
+          authors: "",
+          contact: "",
+        },
+      },
+      {
+        title: "x",
+        blocks: [{ id: "a", type: "scene", text: "" }],
+        titlePage: "cover",
       },
     ];
     for (const value of invalid) {

@@ -16,7 +16,7 @@ import {
   InvalidInput,
   type Snapshot,
   authorName,
-  blankSnapshot,
+  newProjectSnapshot,
   branchName,
   commitMessage,
   isBranchName,
@@ -29,6 +29,7 @@ import {
 } from "../../core/snapshot";
 import type {
   BranchRef,
+  EditorOptions,
   CloudLink,
   CommitInfo,
   CommitInput,
@@ -157,10 +158,10 @@ export class ProjectStore implements ProjectApi {
     await store.objects.init("main");
     const state = emptyState();
     if (!init.cloud) {
-      const snapshot = parseSnapshot(
-        init.snapshot === undefined
-          ? blankSnapshot(title)
-          : { ...(init.snapshot as object), title },
+      const snapshot = newProjectSnapshot(
+        title,
+        init.authorName ?? "",
+        init.snapshot,
       );
       const tree = await store.putTree(snapshot);
       const head = await store.objects.put(
@@ -330,9 +331,14 @@ export class ProjectStore implements ProjectApi {
     return this.commitCache.has(oid) || (await this.objects.has(oid));
   }
   private async role(): Promise<Role> {
+    return (await this.member()).role;
+  }
+  private async member(): Promise<{ role: Role; options?: EditorOptions }> {
     const cloud = (await this.readMeta()).cloud;
-    if (!cloud) return "owner";
-    return cloud.access === "ok" ? cloud.role : "reviewer";
+    if (!cloud) return { role: "owner" };
+    return cloud.access === "ok"
+      ? { role: cloud.role, options: cloud.options }
+      : { role: "reviewer" };
   }
   private async authorFor(name: unknown) {
     const cloud = (await this.readMeta()).cloud;
@@ -556,7 +562,7 @@ export class ProjectStore implements ProjectApi {
       const state = await this.readState();
       const entry = state.branches[branch];
       if (!entry) return { status: "rejected", error: "Branch not found." };
-      const denied = publishDenied(await this.role(), entry);
+      const denied = publishDenied(await this.member(), entry);
       if (denied) return { status: "rejected", error: denied };
       if (entry.head !== expectedHead)
         return {
@@ -692,8 +698,21 @@ export class ProjectStore implements ProjectApi {
       if (patch.cloud && meta.cloud) {
         const cloud = { ...meta.cloud };
         const p = patch.cloud;
-        if (p.role && ["owner", "editor", "reviewer"].includes(p.role))
+        if (
+          p.role &&
+          ["owner", "editor", "commenter", "reviewer"].includes(p.role)
+        )
           cloud.role = p.role;
+        if ("options" in p) {
+          const o = p.options;
+          if (o && typeof o === "object")
+            cloud.options = {
+              editMain: o.editMain === true,
+              commentMain: o.commentMain !== false,
+              branch: typeof o.branch === "string" ? o.branch : null,
+            };
+          else delete cloud.options;
+        }
         if (p.access === "ok" || p.access === "revoked")
           cloud.access = p.access;
         if (typeof p.cloned === "boolean") cloud.cloned = p.cloned;
@@ -958,14 +977,19 @@ function branchList(state: StateFile): BranchRef[] {
 const rejected = (error: string): SaveResult => ({ status: "rejected", error });
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong.";
-/** Same rule as assertPublish in the backend. Returns why not, or null. */
+/** The backend's rule for committing (assertPublish), as far as this device
+ * can tell. Whose branch a branch is only the cloud knows, so an editor
+ * limited to a dedicated branch learns that when sync publishes. Returns why
+ * not, or null. */
 function publishDenied(
-  role: Role,
+  member: { role: Role; options?: EditorOptions },
   branch: { protected: boolean },
 ): string | null {
+  const { role, options } = member;
   if (branch.protected)
-    return role === "owner"
+    return role === "owner" ||
+      (role === "editor" && options?.editMain && !options.branch)
       ? null
-      : "Only the owner can commit to this protected branch. Create a branch, commit there, then open a merge request.";
+      : "You can’t commit to this protected branch. Create a branch, commit there, then open a merge request.";
   return WRITERS.includes(role) ? null : "Read-only access cannot commit.";
 }

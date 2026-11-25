@@ -361,7 +361,8 @@ test("cloud roles are enforced on the device: editors cannot commit to main, rea
     author,
   });
   assert.equal(refused.status, "rejected");
-  assert.match(refused.error!, /Only the owner/);
+  assert.match(refused.error!, /can’t commit to this protected branch/);
+
   await store.createBranch({
     name: "mine",
     sourceBranch: "main",
@@ -408,6 +409,36 @@ test("cloud roles are enforced on the device: editors cannot commit to main, rea
     }),
     /Read-only/,
   );
+  // Commenters are read-only too.
+  await store.setMeta({ cloud: { role: "commenter" } });
+  assert.equal(
+    (
+      await store.saveDraft({
+        branch: "mine",
+        baseCommit: first.oid,
+        expectedVersion: 0,
+        draft: script("Shared", block("s1")),
+      })
+    ).status,
+    "rejected",
+  );
+  // An editor the owner allowed to edit main commits there.
+  await store.setMeta({
+    cloud: {
+      role: "editor",
+      options: { editMain: true, commentMain: true, branch: null },
+    },
+  });
+  const onMain = await store.loadDraft("main");
+  const allowed = await store.commit({
+    branch: "main",
+    expectedHead: first.oid,
+    draftVersion: onMain.version,
+    message: "Allowed",
+    author,
+  });
+  assert.equal(allowed.status, "succeeded", allowed.error);
+  assert.equal((await store.state()).meta.cloud?.options?.editMain, true);
   // Pulling the same project twice reuses the copy that is already here.
   const again = await library.createClone({
     uid: "u1",

@@ -132,3 +132,247 @@
   border-radius: 6px;
   padding: 10px 16px;
 }
+
+/* ---- Margin notes (WriterDuet style) ------------------------------------ */
+.comment-canvas {
+  position: relative;
+}
+.comment-margin {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.comment-margin > * {
+  pointer-events: auto;
+}
+/* The line being pointed at, and the one whose notes are open: the editing
+   tint, a little lighter. */
+.block.comment-hover:not(:focus) {
+  background-color: color-mix(
+    in srgb,
+    var(--script-active-background) 60%,
+    transparent
+  );
+  border-radius: var(--script-active-radius);
+}
+.block.comment-open:not(:focus) {
+  background-color: color-mix(
+    in srgb,
+    var(--script-active-background) 85%,
+    transparent
+  );
+  border-radius: var(--script-active-radius);
+}
+.comment-pin {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border-radius: 5px;
+  color: #b4b4bd;
+  opacity: 0.8;
+  transition:
+    color 0.12s,
+    opacity 0.12s,
+    background 0.12s;
+}
+.comment-pin:hover,
+.comment-pin:focus-visible {
+  color: #52525b;
+  opacity: 1;
+  background: #f4f4f5;
+}
+/* A line with notes keeps its icon, in the theme colour. */
+.comment-pin.is-set {
+  color: #0d9488;
+  opacity: 1;
+}
+.comment-pin.is-set:hover,
+.comment-pin.is-open {
+  color: #0f766e;
+  background: #ccfbf1;
+  opacity: 1;
+}
+.comment-pin.is-set svg path {
+  fill: #ccfbf1;
+}
+.comment-count {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #0d9488;
+  color: white;
+  font: 600 9px/15px var(--font-ui);
+}
+
+/* A line's thread of notes. */
+.comment-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 14px 40px #0000003a;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  text-align: left;
+}
+.comment-thread-floating {
+  position: absolute;
+  z-index: 6;
+  max-height: min(70vh, 520px);
+  overflow: auto;
+}
+.comment-thread-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.comment-thread-quote {
+  flex: 1;
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--green);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.comment-thread-head button {
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 2px;
+  color: var(--muted);
+}
+.comment-items {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.comment-items li {
+  padding: 10px 0 0;
+  border-top: 1px solid var(--line);
+}
+.comment-items li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.comment-items li.is-resolved {
+  opacity: 0.6;
+}
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.comment-meta strong {
+  font-size: 12px;
+}
+.comment-meta span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.comment-items p {
+  margin: 5px 0 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.comment-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.comment-buttons button {
+  color: var(--muted);
+}
+.comment-buttons button:hover:not(:disabled) {
+  color: var(--ink);
+}
+.comment-buttons small {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+.comment-buttons .comment-primary {
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: var(--accent-fill);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.comment-buttons .comment-primary:hover:not(:disabled) {
+  color: var(--accent-text);
+  filter: brightness(1.08);
+}
+.comment-buttons .comment-danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+.comment-thread button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.comment-thread textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 52px;
+  padding: 8px 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: inherit;
+  line-height: 1.45;
+}
+.comment-thread textarea:focus {
+  outline: none;
+  border-color: var(--green);
+}
+.comment-new {
+  padding-top: 2px;
+}
+.comment-show-resolved {
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--green);
+}
+.comment-empty,
+.comment-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.comment-error {
+  color: var(--danger);
+}
+@media print {
+  .comment-margin {
+    display: none;
+  }
+}
+.comments-tip {
+  margin: 0;
+  padding: 12px 18px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}

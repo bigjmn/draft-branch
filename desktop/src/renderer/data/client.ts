@@ -63,7 +63,7 @@ export const watchProjects = web.watchProjects;
 export const inviteProjectMember = web.inviteProjectMember as (
   projectId: string,
   email: string,
-  role: "editor" | "reviewer",
+  options: web.InviteOptions,
   requestId?: string,
 ) => ReturnType<typeof web.inviteProjectMember>;
 export const acceptProjectInvitation = web.acceptProjectInvitation;

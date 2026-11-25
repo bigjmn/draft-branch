@@ -3,7 +3,9 @@ import {
   type Draft,
   type ElementType,
   type ScriptBlock,
+  type TitlePage,
 } from "./types";
+import { TITLE_PAGE_FIELDS, TITLE_PAGE_LIMITS } from "./title-page";
 
 export const SCREENPLAY_MIME = "application/x-draftbranch-elements+json";
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -97,10 +99,46 @@ export function parseFdx(
   warnings.add(
     "Text and screenplay element types are preserved. Custom fonts, emphasis, notes, and revision marks are not imported.",
   );
+  const cover = titlePage ? readTitlePage(titlePage, text) : undefined;
   return {
-    draft: validateImport({ title: title.slice(0, 200), blocks }),
+    draft: validateImport({
+      title: title.slice(0, 200),
+      blocks,
+      ...(cover ? { titlePage: cover } : {}),
+    }),
     warnings: [...warnings],
   };
+}
+/** Final Draft's title page as DraftBranch fields: the first line is the
+ * title, centred lines under it are the credit and author(s), and lines set
+ * left or right are the contact block. A page with only a title is ignored. */
+function readTitlePage(
+  page: Element,
+  text: (el: Element) => string,
+): TitlePage | undefined {
+  const rows = Array.from(page.querySelectorAll("Paragraph"))
+    .map((el) => ({
+      text: text(el).trim(),
+      centred: (el.getAttribute("Alignment") ?? "Center") === "Center",
+    }))
+    .filter((row) => /[\p{L}\p{N}]/u.test(row.text));
+  if (rows.length < 2) return undefined;
+  const [first, ...rest] = rows;
+  const centred = rest.filter((row) => row.centred).map((row) => row.text);
+  const contact = rest.filter((row) => !row.centred).map((row) => row.text);
+  const credit =
+    centred.length > 1 || /\bby\b/i.test(centred[0] ?? "")
+      ? centred.shift()!
+      : "";
+  const page_ = {
+    title: first.text,
+    credit,
+    authors: centred.join("\n"),
+    contact: contact.join("\n"),
+  };
+  for (const field of TITLE_PAGE_FIELDS)
+    page_[field] = page_[field].slice(0, TITLE_PAGE_LIMITS[field]);
+  return page_;
 }
 export async function readFdx(file: File) {
   if (!/\.fdx$/i.test(file.name))

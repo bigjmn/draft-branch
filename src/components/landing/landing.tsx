@@ -10,6 +10,9 @@ import { AuthPanel, type AuthMode } from "@/components/auth/auth-panel";
 import { useAuth } from "@/components/auth/auth-provider";
 import { authErrorMessage } from "@/lib/firebase/auth-errors";
 import { firebaseAuth } from "@/lib/firebase/client";
+import { useRedirect } from "@/components/auth/use-redirect";
+import { debugLog, describeUser } from "@/lib/debug";
+import { ContactSection } from "./contact-section";
 
 type TrySource = "nav" | "hero" | "closing";
 
@@ -17,7 +20,13 @@ export function Landing() {
   const { user, loading, revision } = useAuth();
   const gate = landingState(loading, user);
   const router = useRouter();
-  const [mode, setMode] = useState<AuthMode>("signup");
+  // "?signin" (the link back from a password reset) opens on Sign in.
+  const [mode, setMode] = useState<AuthMode>(() =>
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("signin")
+      ? "signin"
+      : "signup",
+  );
   const [trying, setTrying] = useState(false);
   const [tryError, setTryError] = useState<{
     source: TrySource;
@@ -29,10 +38,13 @@ export function Landing() {
   // Resolve auth before rendering account actions. Re-run on session restoration
   // (including browser back/forward cache) even when the user ID is unchanged.
   useEffect(() => {
-    if (gate === "dashboard") {
-      router.replace("/dashboard");
-    }
-  }, [gate, revision, router]);
+    debugLog("route", `landing: ${gate}`, describeUser(user));
+  }, [gate, user]);
+  useRedirect(
+    gate === "dashboard" ? "/dashboard" : null,
+    "signed in on the landing page",
+    revision,
+  );
 
   async function tryEditor(source: TrySource) {
     if (tryingRef.current) return;
@@ -121,9 +133,9 @@ export function Landing() {
                 <p className="hero-statement">Completely free.</p> */}
               </div>
               <p className="hero-lede">
-                A clean, properly formatted screenplay editor, built so writing
-                partners can try alternate versions, review each other&apos;s
-                changes, and keep the best of both.
+                A clean, properly formatted screenplay editor, built with an
+                engineer's approach to collaboration. Work online, or download{" "}
+                <Link href="/downloads">DraftBranch for desktop</Link>.
               </p>
               <button
                 type="button"
@@ -221,12 +233,12 @@ export function Landing() {
             />
             <Step
               title="Branch"
-              text="Try the bold version on its own branch without touching the main draft."
+              text="Try the bold version on its own branch without touching the main draft. Maybe the girl ends up marrying the rich jock?"
               visual={<BranchVisual />}
             />
             <Step
               title="Review"
-              text="Your writing partner sees exactly what changed, scene by scene, and leaves notes in place."
+              text="Your team sees exactly what changed, scene by scene, and leaves notes in place. Or they can fix it themselves for once?"
               visual={<ReviewVisual />}
             />
             <Step
@@ -242,8 +254,7 @@ export function Landing() {
             <div className="eyebrow">FAQ</div>
             <h2>Frequently asked questions</h2>
             <p>
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
-              eiusmod tempor incididunt ut labore.
+              You wouldn't believe how frequently I'm asked these, you guys.
             </p>
           </div>
           <div className="faq-list">
@@ -268,6 +279,8 @@ export function Landing() {
           </button>
           {tryErrorFor(["closing"])}
         </section>
+
+        <ContactSection />
       </main>
 
       <div className="landing-footer">
@@ -280,37 +293,65 @@ export function Landing() {
   );
 }
 
+function ContactLink() {
+  return <a href="#contact">contact me</a>;
+}
+
 // Placeholder copy until real questions and answers are written.
-const FAQS = [
+const FAQS: { question: string; answer: React.ReactNode }[] = [
   {
-    question: "Lorem ipsum dolor sit amet, consectetur adipiscing?",
-    answer:
-      "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante venenatis dapibus. Donec ullamcorper nulla non metus auctor fringilla.",
+    question:
+      "What if I have feedback, ideas for features, or a bug to report?",
+    answer: (
+      <>
+        Please feel free to <ContactLink />. I’ll respond so fast that honestly
+        it’ll bum you out.
+      </>
+    ),
   },
   {
-    question: "Sed ut perspiciatis unde omnis iste natus error?",
+    question:
+      "I’m obviously not gonna read the terms and conditions - what exactly am I agreeing to?",
     answer:
-      "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis.",
+      "Basically the same as you agree to for using Google Docs - you own all your own stuff, sharing and/or inviting collaborators doesn’t transfer ownership, etc. Also if I have to suspend your account because, I don’t know — you set your bio to be bomb-making instructions or something — I’ll notify you and give you ample time to export your stuff.",
   },
   {
-    question: "Nemo enim ipsam voluptatem quia voluptas sit?",
+    question: "Are my projects and my data secure?",
     answer:
-      "Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.",
+      "I will protect them with my life, and with the lives of others if necessary.",
   },
   {
-    question: "Ut enim ad minima veniam, quis nostrum?",
-    answer:
-      "Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur.",
+    question:
+      "This is sweet, but can I hire you to build a specialized version that better fits my organization?",
+    answer: (
+      <>
+        For sure - if you’re interested in specific automations or workflows to
+        support you using DraftBranch as an in-house tool, <ContactLink /> and
+        we can hammer out the deets.
+      </>
+    ),
   },
   {
-    question: "Quis autem vel eum iure reprehenderit?",
+    question: "I don’t know anything about Git - any tips ’n tricks?",
     answer:
-      "Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur.",
+      "Don’t work on the main branch directly. Create new branches and merge them in.",
   },
   {
-    question: "At vero eos et accusamus et iusto odio?",
-    answer:
-      "At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias.",
+    question: "Have you build other cool things?",
+    answer: (
+      <>
+        Have I ever! Check out{" "}
+        <a
+          href="https://jnicksproductions.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          jnicksproductions.com
+        </a>{" "}
+        to see all the fun stuff I’ve been up to. I also have my own writing
+        projects on there if you’re looking to round out your development slate.
+      </>
+    ),
   },
 ];
 
@@ -453,7 +494,7 @@ function ReviewVisual() {
       <p className="ctx">BUTLER</p>
       <p className="del">− Do I look like I give a shit?</p>
       <p className="add">+ Frankly, my dear, I don't give a damn.</p>
-      <p className="note">Ben: Still savage, but classy. Love it.</p>
+      <p className="note">Dave: Still savage, but classy. Love it.</p>
     </div>
   );
 }

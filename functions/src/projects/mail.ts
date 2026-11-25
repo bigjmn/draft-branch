@@ -9,6 +9,12 @@ interface MailJob {
   ownerName: string;
   title: string;
   role: string;
+  /** An editor's dedicated branch, if the owner made one. */
+  branch?: string | null;
+  /** The owner's optional personal note. */
+  note?: string;
+  /** Only the invited person, signed in, may read the project. */
+  requireSignIn?: boolean;
   link: string;
   attempts: number;
 }
@@ -18,16 +24,57 @@ export interface InvitationMessage {
   text: string;
   messageId: string;
 }
+/** The opening line: who invited you, to what, and how you can take part. */
+export function invitationSummary(job: {
+  ownerName: string;
+  title: string;
+  role: string;
+  branch?: string | null;
+}): string {
+  if (job.role === "editor" && job.branch)
+    return `${job.ownerName} invited you to edit “${job.title}” with dedicated branch “${job.branch}”.`;
+  if (job.role === "editor")
+    return `${job.ownerName} invited you to edit “${job.title}”.`;
+  if (job.role === "commenter")
+    return `${job.ownerName} invited you to comment on “${job.title}”.`;
+  return `${job.ownerName} invited you to read “${job.title}”.`;
+}
 export function invitationMessage(
   job: MailJob,
   jobId: string,
 ): InvitationMessage {
-  const role = job.role === "editor" ? "Editor" : "Reader";
+  const next = job.requireSignIn
+    ? job.role === "editor" && job.branch
+      ? `Sign in or create an account with this email address, verify it, and accept the invitation. The branch “${job.branch}” is made for you then, and you write there. You can still read every other branch.`
+      : job.role === "editor"
+        ? "Sign in or create an account with this email address, verify it, and accept the invitation to branch and contribute."
+        : job.role === "commenter"
+          ? "Sign in or create an account with this email address, verify it, and accept the invitation to comment on the pages."
+          : "Sign in or create an account with this email address, verify it, and accept the invitation to read the project."
+    : job.role === "editor"
+      ? job.branch
+        ? `Sign in or create an account with this email address, verify it, and accept the invitation. The branch “${job.branch}” is made for you then, and you write there. You can still read every other branch. You can also continue with read-only access without an account.`
+        : "Sign in or create an account with this email address, verify it, and accept the invitation to branch and contribute. You can also continue with read-only access without an account."
+      : job.role === "commenter"
+        ? "Sign in or create an account with this email address, verify it, and accept the invitation to comment on the pages. You can also read without an account."
+        : "You can read without creating an account, or sign in to add the project to your dashboard.";
+  const linkNotice = job.requireSignIn
+    ? "This link expires after 7 days. The project opens only for you, signed in with this email address."
+    : "This link expires after 7 days. Anyone holding it can read the committed branches and revision history until it expires or is revoked. Keep it private.";
+  const note = job.note?.trim()
+    ? `\n\nA note from ${job.ownerName}:\n${job.note
+        .trim()
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n")}`
+    : "";
   return {
     to: job.to,
-    subject: "You’re invited to a DraftBranch project",
+    subject: `${job.ownerName} invited you to “${job.title}” on DraftBranch`
+      .replace(/[\r\n]+/g, " ")
+      .slice(0, 200),
     messageId: `<draftbranch-invitation-${jobId}@draftbranch.com>`,
-    text: `${job.ownerName} has invited you to “${job.title}” with ${role} access.\n\n${role === "Editor" ? "Sign in or create an account with this email address, verify it, and accept the invitation to branch and contribute. You can also continue with read-only access without an account." : "You can read without creating an account, or sign in to add the project to your dashboard."}\n\nOpen your invitation:\n${job.link}\n\nThis link expires after 7 days. Anyone holding it can read the committed branches and revision history until it expires or is revoked. Keep it private.\n\nIf you weren’t expecting this invitation, you can ignore it.\nDraftBranch · J Nicks Productions`,
+    text: `${invitationSummary(job)}${note}\n\n${next}\n\nOpen your invitation:\n${job.link}\n\n${linkNotice}\n\nIf you weren’t expecting this invitation, you can ignore it.\nDraftBranch · J Nicks Productions`,
   };
 }
 
@@ -133,7 +180,7 @@ export async function deliverInvitation(
 export async function smtpSend(
   smtpUrl: string,
   from: string,
-  message: InvitationMessage,
+  message: InvitationMessage & { replyTo?: string },
 ) {
   if (!smtpUrl || !from || /[\r\n]/.test(from))
     throw new Error("Invitation mail is not configured.");

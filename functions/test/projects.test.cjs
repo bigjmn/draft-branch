@@ -1094,3 +1094,454 @@ test('owner deletion revokes access, removes all project data and is retry safe'
  await assert.rejects(()=>s.createProject(alice,{title:'Delete me',requestId}));
  await assert.rejects(()=>s.deleteProject(eve,{projectId,confirmTitle:'Delete me'}));
 });
+
+// ---- Editor options, dedicated branches, commenters ------------------------
+const carol = actor("carol"),
+  dave = actor("dave");
+async function join(s, owner, pid, who, options) {
+  const invite = await inviteWithToken(s, owner, {
+    projectId: pid,
+    email: who.email,
+    requestId: unique(),
+    ...options,
+  });
+  return { invite, accepted: await s.acceptInvitation(who, invite) };
+}
+const tryEdit = (s, objects, a, pid, branch, head, draft) =>
+  prepare(s, objects, a, pid, branch, head, 0, draft);
+const page = (text) => ({
+  title: "Options",
+  blocks: [
+    { id: "s1", type: "scene", text: "INT. ROOM - DAY" },
+    { id: "a1", type: "action", text },
+  ],
+});
+
+test(
+  "editors can't edit main unless invited to; those who can also merge into it",
+  { skip: !enabled },
+  async () => {
+    const { s, objects } = fixture();
+    const { projectId: pid } = await s.createProject(alice, {
+      title: "Options",
+      requestId: unique(),
+    });
+    const start = await commitOn(s, objects, alice, pid, "main", page("One."));
+    await join(s, alice, pid, bob, { role: "editor" });
+    const bobMember = (
+      await db.doc(`projects/${pid}/members/bob`).get()
+    ).data();
+    assert.deepEqual(bobMember.access, {
+      editMain: false,
+      commentMain: true,
+      branch: null,
+    });
+    await assert.rejects(
+      tryEdit(s, objects, bob, pid, "main", start, page("Bob on main.")),
+      { code: "permission-denied" },
+    );
+    // Bob reads main's latest revision, never a working draft there.
+    assert.equal(
+      (await s.loadDraft(bob, { projectId: pid, branchId: "main" })).version,
+      0,
+    );
+    await s.createBranch(bob, {
+      projectId: pid,
+      name: "bob-idea",
+      sourceBranch: "main",
+      expectedHead: start,
+      requestId: unique(),
+    });
+    await commitOn(s, objects, bob, pid, "bob-idea", page("Bob's idea."));
+    const merge = async (who) => {
+      const preview = await s.previewMerge(who, {
+        projectId: pid,
+        sourceBranch: "bob-idea",
+        targetBranch: "main",
+      });
+      return s.mergeBranches(who, {
+        projectId: pid,
+        sourceBranch: "bob-idea",
+        targetBranch: "main",
+        expectedSourceHead: preview.sourceHead,
+        expectedTargetHead: preview.targetHead,
+        requestId: unique(),
+      });
+    };
+    await assert.rejects(merge(bob), { code: "permission-denied" });
+
+    // Carol may edit main: she commits there and merges Bob's branch in.
+    await join(s, alice, pid, carol, { role: "editor", editMain: true });
+    await commitOn(s, objects, carol, pid, "main", {
+      ...page("One."),
+      blocks: [
+        ...page("One.").blocks,
+        { id: "c1", type: "action", text: "Carol adds a line on main." },
+      ],
+    });
+    const result = await merge(carol);
+    assert.equal(
+      (await db.doc(`projects/${pid}/branches/main`).get()).data().head,
+      result.commitId,
+    );
+  },
+);
+
+test(
+  "a dedicated branch is made on joining, carries main's comments, and is the editor's only writable branch",
+  { skip: !enabled },
+  async () => {
+    const { s, objects } = fixture();
+    const { projectId: pid } = await s.createProject(alice, {
+      title: "Options",
+      requestId: unique(),
+    });
+    const start = await commitOn(s, objects, alice, pid, "main", page("One."));
+    await db.doc(`projects/${pid}/comments/note-1`).set({
+      authorUid: "alice",
+      authorName: "Alice",
+      branch: "main",
+      blockId: "a1",
+      quote: "One.",
+      text: "Punch this up.",
+      resolved: false,
+      createdAt: Timestamp.fromMillis(Date.now()),
+    });
+    // Invalid combinations are refused up front.
+    for (const [options, code] of [
+      [{ branch: "bob-pages", editMain: true }, "invalid-argument"],
+      [{ branch: "main" }, "invalid-argument"],
+      [{ branch: "Bad Name" }, "invalid-argument"],
+      [{ note: "x".repeat(1001) }, "invalid-argument"],
+    ])
+      await assert.rejects(
+        s.inviteMember(alice, {
+          projectId: pid,
+          email: bob.email,
+          role: "editor",
+          requestId: unique(),
+          ...options,
+        }),
+        { code },
+      );
+    const { invite, accepted } = await join(s, alice, pid, bob, {
+      role: "editor",
+      branch: "bob-pages",
+      note: "Take a pass at act two.",
+    });
+    assert.deepEqual(accepted, {
+      projectId: pid,
+      role: "editor",
+      branch: "bob-pages",
+    });
+    // Accepting again changes nothing and still points at the branch.
+    assert.equal((await s.acceptInvitation(bob, invite)).branch, "bob-pages");
+    const info = await s.sharedInvitation(invite);
+    assert.equal(info.note, "Take a pass at act two.");
+    assert.equal(info.access.branch, "bob-pages");
+    const mail = (
+      await db
+        .collection("invitationMail")
+        .where("invitationId", "==", invite.invitationId)
+        .get()
+    ).docs[0].data();
+    assert.equal(mail.branch, "bob-pages");
+    assert.equal(mail.note, "Take a pass at act two.");
+
+    const branch = (
+      await db.doc(`projects/${pid}/branches/bob-pages`).get()
+    ).data();
+    assert.equal(branch.head, start);
+    assert.equal(branch.dedicatedTo, "bob");
+    assert.equal(branch.protected, false);
+    const copied = (
+      await db
+        .collection(`projects/${pid}/comments`)
+        .where("branch", "==", "bob-pages")
+        .get()
+    ).docs.map((d) => d.data());
+    assert.equal(copied.length, 1);
+    assert.equal(copied[0].text, "Punch this up.");
+    assert.equal(copied[0].copiedFrom, "note-1");
+
+    // The name is taken now, so another invitation can't reuse it.
+    await assert.rejects(
+      s.inviteMember(alice, {
+        projectId: pid,
+        email: dave.email,
+        role: "editor",
+        branch: "bob-pages",
+        requestId: unique(),
+      }),
+      { code: "already-exists" },
+    );
+
+    await commitOn(s, objects, bob, pid, "bob-pages", page("Bob's pass."));
+    // Other branches are view-only for Bob, and he branches only from his own.
+    await s.createBranch(alice, {
+      projectId: pid,
+      name: "alice-draft",
+      sourceBranch: "main",
+      expectedHead: start,
+      requestId: unique(),
+    });
+    await assert.rejects(
+      tryEdit(s, objects, bob, pid, "alice-draft", start, page("No.")),
+      { code: "permission-denied" },
+    );
+    await assert.rejects(
+      s.createBranch(bob, {
+        projectId: pid,
+        name: "from-main",
+        sourceBranch: "main",
+        expectedHead: start,
+        requestId: unique(),
+      }),
+      { code: "permission-denied" },
+    );
+    const pagesHead = (
+      await db.doc(`projects/${pid}/branches/bob-pages`).get()
+    ).data().head;
+    await s.createBranch(bob, {
+      projectId: pid,
+      name: "bob-sub",
+      sourceBranch: "bob-pages",
+      expectedHead: pagesHead,
+      requestId: unique(),
+    });
+    assert.equal(
+      (
+        await db
+          .collection(`projects/${pid}/comments`)
+          .where("branch", "==", "bob-sub")
+          .get()
+      ).size,
+      1,
+      "a new branch starts with its parent's comments",
+    );
+    await commitOn(s, objects, bob, pid, "bob-sub", page("Bob's sub."));
+    const into = async (target) => {
+      const preview = await s.previewMerge(bob, {
+        projectId: pid,
+        sourceBranch: "bob-sub",
+        targetBranch: target,
+      });
+      return s.mergeBranches(bob, {
+        projectId: pid,
+        sourceBranch: "bob-sub",
+        targetBranch: target,
+        expectedSourceHead: preview.sourceHead,
+        expectedTargetHead: preview.targetHead,
+        requestId: unique(),
+      });
+    };
+    await into("bob-pages");
+    await assert.rejects(into("main"), { code: "permission-denied" });
+    await s.openMergeRequest(bob, {
+      projectId: pid,
+      sourceBranch: "bob-pages",
+      targetBranch: "main",
+      title: "Act two pass",
+      requestId: unique(),
+    });
+
+    // Another editor can't write on Bob's dedicated branch.
+    await join(s, alice, pid, carol, { role: "editor" });
+    const head = (
+      await db.doc(`projects/${pid}/branches/bob-pages`).get()
+    ).data().head;
+    await assert.rejects(
+      tryEdit(s, objects, carol, pid, "bob-pages", head, page("Carol.")),
+      { code: "permission-denied" },
+    );
+    // The owner still can.
+    await commitOn(s, objects, alice, pid, "bob-pages", page("Alice fixes."));
+  },
+);
+
+test(
+  "commenters read every branch but can't save, branch or commit",
+  { skip: !enabled },
+  async () => {
+    const { s, objects } = fixture();
+    const { projectId: pid, head } = await s.createProject(alice, {
+      title: "Options",
+      requestId: unique(),
+    });
+    const { invite, accepted } = await join(s, alice, pid, dave, {
+      role: "commenter",
+      note: "Notes welcome.",
+    });
+    assert.equal(accepted.role, "commenter");
+    assert.equal(accepted.branch, null);
+    assert.equal((await s.sharedInvitation(invite)).access, undefined);
+    assert.equal(
+      (await db.doc(`projects/${pid}/members/dave`).get()).data().access,
+      undefined,
+    );
+    assert.equal(
+      (await s.loadDraft(dave, { projectId: pid, branchId: "main" })).head,
+      head,
+    );
+    await assert.rejects(
+      tryEdit(s, objects, dave, pid, "main", head, page("No.")),
+      { code: "permission-denied" },
+    );
+    await assert.rejects(
+      s.createBranch(dave, {
+        projectId: pid,
+        name: "dave",
+        sourceBranch: "main",
+        expectedHead: head,
+        requestId: unique(),
+      }),
+      { code: "permission-denied" },
+    );
+    // The owner can move people between Reader, Commenter and Editor.
+    await s.updateMemberRole(alice, {
+      projectId: pid,
+      uid: "dave",
+      role: "editor",
+    });
+    assert.deepEqual(
+      (await db.doc(`projects/${pid}/members/dave`).get()).data().access,
+      { editMain: false, commentMain: true, branch: null },
+    );
+    await s.updateMemberRole(alice, {
+      projectId: pid,
+      uid: "dave",
+      role: "commenter",
+    });
+    assert.equal(
+      (await db.doc(`projects/${pid}/members/dave`).get()).data().role,
+      "commenter",
+    );
+  },
+);
+
+test(
+  "an invitation that requires sign-in shows its details but not the screenplay until the invited person accepts",
+  { skip: !enabled },
+  async () => {
+    const { s, objects } = fixture();
+    const { projectId: pid } = await s.createProject(alice, {
+      title: "Private",
+      requestId: unique(),
+    });
+    await commitOn(s, objects, alice, pid, "main", page("Secret pages."));
+    const invite = await inviteWithToken(s, alice, {
+      projectId: pid,
+      email: bob.email,
+      role: "reviewer",
+      requireSignIn: true,
+      requestId: unique(),
+    });
+    const stored = (
+      await db.doc(`projects/${pid}/invitations/${invite.invitationId}`).get()
+    ).data();
+    assert.equal(stored.requireSignIn, true);
+    const mail = (
+      await db
+        .collection("invitationMail")
+        .where("invitationId", "==", invite.invitationId)
+        .get()
+    ).docs[0].data();
+    assert.equal(mail.requireSignIn, true);
+    // The link still shows who invited you to what...
+    const info = await s.sharedInvitation(invite);
+    assert.equal(info.title, "Private");
+    assert.equal(info.requireSignIn, true);
+    // ...but reading the draft, the graph or the history needs an account.
+    for (const extra of [{}, { graph: true }, { history: true }])
+      await assert.rejects(s.sharedInvitation({ ...invite, ...extra }, true), {
+        code: "permission-denied",
+      });
+    // Someone else signed in can't accept it.
+    await assert.rejects(s.acceptInvitation(carol, invite), {
+      code: "permission-denied",
+    });
+    // The invited person accepts and reads as a member.
+    const accepted = await s.acceptInvitation(bob, invite);
+    assert.equal(accepted.role, "reviewer");
+    const loaded = await s.loadDraft(bob, { projectId: pid, branchId: "main" });
+    assert.equal(loaded.draft.blocks.at(-1).text, "Secret pages.");
+    // Accepting doesn't open the link for anyone else.
+    await assert.rejects(s.sharedInvitation(invite, true), {
+      code: "permission-denied",
+    });
+    // Without the option, links keep working as before.
+    const open = await inviteWithToken(s, alice, {
+      projectId: pid,
+      email: carol.email,
+      role: "reviewer",
+      requestId: unique(),
+    });
+    assert.equal((await s.sharedInvitation(open)).requireSignIn, false);
+    assert.equal(
+      (await s.sharedInvitation(open, true)).draft.blocks.at(-1).text,
+      "Secret pages.",
+    );
+  },
+);
+
+test(
+  "a new project gets a title page: project title, written by, the owner's name, contact placeholders",
+  { skip: !enabled },
+  async () => {
+    const { s, objects } = fixture();
+    const owner = { ...actor("jesse"), name: "Jesse Nicholas" };
+    const { projectId: pid } = await s.createProject(owner, {
+      title: "This house is the worst",
+      requestId: unique(),
+    });
+    const expected = {
+      title: "THIS HOUSE IS THE WORST",
+      credit: "written by",
+      authors: "Jesse Nicholas",
+      contact: "Company\nAddress\nPhone\nEmail",
+    };
+    const first = await s.loadDraft(owner, { projectId: pid, branchId: "main" });
+    assert.deepEqual(first.draft.titlePage, expected);
+    // Renaming the project leaves the title page alone.
+    await s.renameProject(owner, { projectId: pid, title: "Renamed" });
+    assert.deepEqual(
+      (await s.loadDraft(owner, { projectId: pid, branchId: "main" })).draft
+        .titlePage,
+      expected,
+    );
+    // Edits to the title page are committed like any other change.
+    const edited = { ...expected, contact: "J Nicks Productions" };
+    await commitOn(s, objects, owner, pid, "main", {
+      ...page("Pages."),
+      titlePage: edited,
+    });
+    assert.deepEqual(
+      (await s.loadDraft(owner, { projectId: pid, branchId: "main" })).draft
+        .titlePage,
+      edited,
+    );
+    // Without a profile name the author line is left for the writer to fill.
+    const { projectId: untitled } = await s.createProject(
+      { ...actor("anon"), name: "Writer" },
+      { title: "Untitled screenplay", requestId: unique() },
+    );
+    const blank = await s.loadDraft(actor("anon"), {
+      projectId: untitled,
+      branchId: "main",
+    });
+    assert.equal(blank.draft.titlePage.title, "UNTITLED");
+    assert.equal(blank.draft.titlePage.authors, "");
+    // An imported draft keeps its own title page.
+    const own = { title: "MINE", credit: "by", authors: "Me", contact: "" };
+    const { projectId: imported } = await s.createProject(owner, {
+      title: "Imported",
+      draft: { ...page("Imported."), titlePage: own },
+      requestId: unique(),
+    });
+    assert.deepEqual(
+      (await s.loadDraft(owner, { projectId: imported, branchId: "main" }))
+        .draft.titlePage,
+      own,
+    );
+  },
+);

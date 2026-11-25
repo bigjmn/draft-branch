@@ -20,13 +20,19 @@ import {
 } from "@/lib/firebase/client";
 import type { Draft } from "@/lib/editor/types";
 import type { Resolution } from "@/lib/projects/merge";
+import type {
+  BranchAccessInfo,
+  EditorAccess,
+  MemberAccess,
+  Role,
+} from "@/lib/projects/permissions";
 
 export interface Project {
   projectId: string;
   title: string;
-  role: "owner" | "editor" | "reviewer";
+  role: Role;
 }
-export interface Branch {
+export interface Branch extends BranchAccessInfo {
   name: string;
   head: string;
   protected: boolean;
@@ -98,22 +104,48 @@ export const commitDraft = (input: {
     "commitDraft",
     input,
   );
+/** What an owner chooses when inviting someone. */
+export interface InviteOptions {
+  role: InvitationRole;
+  /** Editors only. */
+  editMain?: boolean;
+  commentMain?: boolean;
+  /** Editors only: a branch made for them when they join. */
+  branch?: string | null;
+  note?: string;
+  /** Only the invited email, signed in, may read. The link alone isn't enough. */
+  requireSignIn?: boolean;
+}
 export const inviteProjectMember = (
   projectId: string,
   email: string,
-  role: "editor" | "reviewer",
+  options: InviteOptions,
   requestId = crypto.randomUUID(),
 ) =>
   call<{ projectId: string; invitationId: string; status: string }>(
     "inviteProjectMember",
-    { projectId, email, role, requestId },
+    {
+      projectId,
+      email,
+      requestId,
+      role: options.role,
+      ...(options.note?.trim() ? { note: options.note.trim() } : {}),
+      ...(options.requireSignIn ? { requireSignIn: true } : {}),
+      ...(options.role === "editor"
+        ? {
+            editMain: !!options.editMain,
+            commentMain: options.commentMain !== false,
+            ...(options.branch ? { branch: options.branch } : {}),
+          }
+        : {}),
+    },
   );
 export const acceptProjectInvitation = (
   projectId: string,
   invitationId: string,
   token?: string,
 ) =>
-  call<{ projectId: string; role: Project["role"] }>(
+  call<{ projectId: string; role: Project["role"]; branch?: string | null }>(
     "acceptProjectInvitation",
     { projectId, invitationId, ...(token ? { token } : {}) },
   );
@@ -256,7 +288,7 @@ export async function loadBranchHistory(
   return result;
 }
 
-export type InvitationRole = "editor" | "reviewer";
+export type InvitationRole = Exclude<Role, "owner">;
 export interface InvitationAccess {
   projectId: string;
   invitationId: string;
@@ -266,6 +298,11 @@ export interface InvitationInfo {
   title: string;
   ownerName: string;
   role: InvitationRole;
+  /** Present for editor invitations. */
+  access?: EditorAccess;
+  note?: string;
+  /** Reading needs the invited email, signed in, and acceptance. */
+  requireSignIn?: boolean;
   expiresAt: number;
 }
 export const getProjectInvitation = (input: InvitationAccess) =>
@@ -292,7 +329,7 @@ export const updateProjectMemberRole = (
     uid,
     role,
   });
-export interface SharedMember {
+export interface SharedMember extends MemberAccess {
   uid: string;
   role: Project["role"];
   email?: string;
@@ -302,6 +339,9 @@ export interface ProjectInvitation {
   id: string;
   email: string;
   role: InvitationRole;
+  access?: EditorAccess;
+  note?: string;
+  requireSignIn?: boolean;
   status: string;
   deliveryStatus?: string;
   expiresAt: number;

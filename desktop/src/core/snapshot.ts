@@ -25,10 +25,24 @@ export interface SnapshotBlock {
   type: ElementType;
   text: string;
 }
+/** The cover page. Optional so older revisions keep their bytes. */
+export interface TitlePage {
+  title: string;
+  credit: string;
+  authors: string;
+  contact: string;
+}
+export const TITLE_PAGE_LIMITS = {
+  title: 500,
+  credit: 200,
+  authors: 1000,
+  contact: 2000,
+} as const;
 export interface Snapshot {
   schemaVersion: 1;
   title: string;
   blocks: SnapshotBlock[];
+  titlePage?: TitlePage;
 }
 
 /** Bad input from the editor or from disk. The message is safe to show a writer. */
@@ -84,6 +98,21 @@ export function parseSnapshot(value: unknown): Snapshot {
     return { id, type: block.type as ElementType, text: block.text };
   });
   const snapshot: Snapshot = { schemaVersion: 1, title: input.title, blocks };
+  if (input.titlePage !== undefined && input.titlePage !== null) {
+    const page = record(input.titlePage);
+    const field = (key: keyof TitlePage) => {
+      const value = page[key];
+      if (typeof value !== "string" || value.length > TITLE_PAGE_LIMITS[key])
+        fail("Invalid title page.");
+      return value;
+    };
+    snapshot.titlePage = {
+      title: field("title"),
+      credit: field("credit"),
+      authors: field("authors"),
+      contact: field("contact"),
+    };
+  }
   if (utf8Length(JSON.stringify(snapshot)) > MAX_DRAFT_BYTES)
     fail("Screenplay exceeds the 2 MiB limit.");
   return snapshot;
@@ -102,6 +131,36 @@ export function blankSnapshot(title: string): Snapshot {
     title,
     blocks: [{ id: "initial-scene", type: "scene", text: "" }],
   };
+}
+/** Same as the backend: project title, "written by", the owner's name and
+ * placeholder contact lines. Not renamed with the project later. */
+export function defaultTitlePage(title: string, author: string): TitlePage {
+  const name = title.trim();
+  return {
+    title: (!name || /^untitled( screenplay)?$/i.test(name) ? "Untitled" : name)
+      .toUpperCase()
+      .slice(0, TITLE_PAGE_LIMITS.title),
+    credit: "written by",
+    authors: author
+      .replace(/[\r\n]+/g, " ")
+      .trim()
+      .slice(0, TITLE_PAGE_LIMITS.authors),
+    contact: "Company\nAddress\nPhone\nEmail",
+  };
+}
+/** A new project's first revision. An imported draft keeps its own title page. */
+export function newProjectSnapshot(
+  title: string,
+  author: string,
+  draft?: unknown,
+): Snapshot {
+  const snapshot =
+    draft === undefined
+      ? blankSnapshot(title)
+      : parseSnapshot({ ...record(draft), title });
+  return snapshot.titlePage
+    ? snapshot
+    : { ...snapshot, titlePage: defaultTitlePage(title, author) };
 }
 
 export const isOid = (value: unknown): value is string =>

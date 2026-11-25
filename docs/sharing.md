@@ -1,15 +1,31 @@
 # Email sharing
 
-Owners open **Share** in the editor, enter an email address, and select Reader or Editor. An invitation is queued for email delivery; the dialog displays delivery status, memberships, and the latest 50 invitations. Owners can change member roles, remove members, or revoke individual links.
+Owners open **Share** in the editor (“Share your project”), enter an email address, pick a role (Reader, Commenter or Editor) and can add an optional note, which appears in the email and on the invitation page. Editors get extra options, below. An invitation is queued for email delivery. Under **People and invitations** (collapsed by default) the dialog lists memberships, delivery status and the latest 50 invitations; owners change member roles, remove members, or revoke individual links there.
 
 ## Permissions and invitation flow
 
-- Reader: read committed drafts. Accepting an invitation adds the project to the account dashboard.
-- Editor: read, create branches, save working drafts, and commit to unprotected branches. Only the owner can commit to protected `main`, invite people, or manage access.
-- A recipient opens `/invite?project=…&invitation=…#token=…`. The page shows the owner's name, project title, granted role, sign-in/create-account options, and **Continue with read-only access**.
+- Reader: read committed drafts on every branch, and the comments on them. Accepting an invitation adds the project to the account dashboard.
+- Commenter: everything a reader can do, plus leave comments on any branch, including main. No editing, branching or committing.
+- Editor: read every branch, create branches, save working drafts, commit, and comment, within the options the owner chose:
+  - **Allow to edit main branch** (off by default): commit to `main` and merge into it, including approving merge requests, as the owner can. Without it, `main` opens read-only and changes reach it through merge requests.
+  - **Create dedicated branch** (off by default), with a branch name: the branch is made from `main` (carrying main's comments) when the editor accepts, and they're taken straight to it. They edit only that branch and branches they create from it; every other branch is read-only for them, and nobody but they and the owner can edit their dedicated branch. Their work reaches `main` through a merge request. A dedicated branch rules out editing main.
+  - **Allow comments on main branch** (on by default).
+  - Editors invited before these options existed behave as before: they edit every branch except `main` and can comment everywhere.
+- Owner: everything, plus inviting people and managing access.
+- The rules live in `functions/src/projects/permissions.ts`, shared by Cloud Functions (which enforce them), the web editor and the desktop app. `firestore.rules` mirrors the comment rules.
+
+## Comments
+
+- Comments sit in the left margin of the page, as in WriterDuet. Hovering a line shows a faint chat icon and lightly tints the line; clicking it opens that line's thread, where you can read, add, edit or resolve comments. Lines with open comments keep a solid icon in the theme colour, with a count when there's more than one.
+- **Comments** in the editor header lists every comment on the branch in script order (including resolved ones, and comments whose line was deleted) and opens a line's thread.
+- People edit, resolve and delete their own comments; the owner can also resolve or delete anyone's.
+- A new branch starts with a copy of its parent branch's comments.
+- Merge review uses the same comments: hover a line in the merge preview's “Result” diff and click its icon. Review comments are saved on the branch being merged, so they appear beside the same lines in the editor.
+- A recipient opens `/invite?project=…&invitation=…#token=…`. The page shows how they were invited (for example “Alice invited you to edit with dedicated branch act-two-pass.”), the owner's note, the project title, sign-in/create-account options, and **Continue with read-only access**. The email uses the same wording.
 - Reading through an invitation requires no account. It exposes the committed branches and revision history, never private working drafts. An empty/new project therefore shows its initial committed draft until the owner commits changes.
 - Accepting requires a permanent account with the invited email verified. The recipient can send a verification email from the invitation page, then return and accept. Wrong-email accounts cannot accept. Existing membership is preserved rather than silently upgraded by another invitation.
 - Links expire after seven days. Anyone holding a link, including someone it was forwarded to, can read until expiration or revocation. This is intentional bearer-link access; normal project URLs remain membership-protected.
+- **Require sign-in for read access** (any role, off by default) turns the link off as a reading pass. The invitation page still shows who invited you to what, but `readSharedProject` refuses the draft, the graph and the history. Only the invited email address, signed in, verified and accepted as a member, can read. The email and the invitation page drop the “read without an account” wording, and the owner's invitation list marks these invitations “sign-in required”.
 - Revoking a link does not remove an already accepted member. **Remove access** removes membership and revokes that member's accepted invitation links. Previously downloaded/copied content cannot be recalled. Guest views revalidate on focus and every 30 seconds.
 
 ## Production configuration

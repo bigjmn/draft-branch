@@ -17,6 +17,7 @@ import {
   type InvitationInfo,
 } from "@/lib/projects/client";
 import { validProjectId, projectHref } from "@/lib/projects/routes";
+import { ROLE_LABELS } from "@/lib/projects/permissions";
 import type { Draft } from "@/lib/editor/types";
 import { ReadOnlyEditor } from "@/components/editor/screenplay-editor";
 import type { Branch } from "@/lib/projects/client";
@@ -136,12 +137,18 @@ export function InvitationPage() {
       );
       return;
     }
-    await acceptProjectInvitation(
+    const accepted = await acceptProjectInvitation(
       access.projectId,
       access.invitationId,
       access.token,
     );
-    router.replace(projectHref(access.projectId));
+    // An editor with a dedicated branch starts on it.
+    router.replace(
+      projectHref(access.projectId) +
+        (accepted.branch
+          ? `&branch=${encodeURIComponent(accepted.branch)}`
+          : ""),
+    );
   }
   const registered = user && !user.isAnonymous;
   if (!unavailable && (!info || loading)) return <TypewriterLoader />;
@@ -195,21 +202,42 @@ export function InvitationPage() {
         <>
           <section className="invitation-card">
             <p className="eyebrow">
-              YOU’RE INVITED · {info.role === "editor" ? "EDITOR" : "READER"}
+              YOU’RE INVITED · {ROLE_LABELS[info.role].toUpperCase()}
             </p>
             <h1>{info.title}</h1>
             <p>
-              {info.ownerName} has given you{" "}
-              {info.role === "editor" ? "Editor" : "Reader"} access.{" "}
-              {info.role === "editor"
-                ? "Sign in to contribute, or continue with read-only access."
-                : "Read without an account, or sign in to keep this project in your dashboard."}
+              {summary(info)}{" "}
+              {info.requireSignIn
+                ? info.role === "editor" && info.access?.branch
+                  ? `Sign in with the invited email and accept, and the branch ${info.access.branch} is made for you to write on. You can read every other branch.`
+                  : `Sign in with the invited email and accept the invitation to ${
+                      info.role === "editor"
+                        ? "contribute"
+                        : info.role === "commenter"
+                          ? "comment on the pages"
+                          : "read the project"
+                    }.`
+                : info.role === "editor"
+                  ? info.access?.branch
+                    ? `Accept with the invited email and the branch ${info.access.branch} is made for you to write on. You can read every other branch, or continue with read-only access for now.`
+                    : "Sign in to contribute, or continue with read-only access."
+                  : info.role === "commenter"
+                    ? "Sign in to comment on the pages, or continue with read-only access."
+                    : "Read without an account, or sign in to keep this project in your dashboard."}
             </p>
+            {info.note && (
+              <blockquote className="invitation-note">
+                <span>A note from {info.ownerName}</span>
+                {info.note}
+              </blockquote>
+            )}
             <p className="share-description">
-              Read access includes all committed branches and their history.
+              {info.requireSignIn
+                ? "The owner asked that only the invited email address, signed in, can open this project."
+                : "Read access includes all committed branches and their history."}{" "}
               This link expires {new Date(info.expiresAt).toLocaleDateString()}.
             </p>
-            {!reading && (
+            {!reading && !info.requireSignIn && (
               <button
                 className="primary-action"
                 onClick={() => {
@@ -296,4 +324,14 @@ export function InvitationPage() {
       )}
     </main>
   );
+}
+
+/** The invitation's first line, matching the email. */
+function summary(info: InvitationInfo) {
+  if (info.role === "editor" && info.access?.branch)
+    return `${info.ownerName} invited you to edit with dedicated branch ${info.access.branch}.`;
+  if (info.role === "editor") return `${info.ownerName} invited you to edit.`;
+  if (info.role === "commenter")
+    return `${info.ownerName} invited you to comment.`;
+  return `${info.ownerName} invited you to read.`;
 }

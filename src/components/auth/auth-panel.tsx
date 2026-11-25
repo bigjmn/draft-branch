@@ -8,6 +8,7 @@ import {
 import { useState, type FormEvent } from "react";
 import { authErrorMessage } from "@/lib/firebase/auth-errors";
 import { firebaseAuth } from "@/lib/firebase/client";
+import { requestPasswordReset, signInUrl } from "@/lib/firebase/password-reset";
 import { useAuth } from "./auth-provider";
 
 export type AuthMode = "signup" | "signin";
@@ -31,6 +32,9 @@ export function AuthPanel({
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The email typed so far, carried into the password-reset form.
+  const [email, setEmail] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   async function run(action: () => Promise<unknown>) {
     if (mode === "signup" && !agreed) {
@@ -75,6 +79,7 @@ export function AuthPanel({
 
   const switchMode = (next: Mode) => {
     setPasswordMismatch(false);
+    setResetting(false);
     setOwnMode(next);
     onModeChange?.(next);
     setError(null);
@@ -82,6 +87,19 @@ export function AuthPanel({
   // Not disabled while the saved session loads: that can take a moment, and
   // signing in again at that point is harmless. A guest may sign in to an account.
   const disabled = busy || Boolean(user && !user.isAnonymous);
+
+  if (resetting)
+    return (
+      <PasswordReset
+        email={email}
+        disabled={Boolean(user && !user.isAnonymous)}
+        onBack={(typed) => {
+          setEmail(typed);
+          setResetting(false);
+          setError(null);
+        }}
+      />
+    );
 
   return (
     <section className="auth-card" aria-labelledby="auth-title">
@@ -162,10 +180,27 @@ export function AuthPanel({
             autoComplete="email"
             required
             disabled={disabled}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
           />
         </label>
         <label>
-          Password
+          <span className="auth-label-row">
+            Password
+            {mode === "signin" && (
+              <button
+                type="button"
+                className="auth-forgot"
+                disabled={disabled}
+                onClick={() => {
+                  setResetting(true);
+                  setError(null);
+                }}
+              >
+                Forgot password?
+              </button>
+            )}
+          </span>
           <input
             name="password"
             type="password"
@@ -222,6 +257,108 @@ export function AuthPanel({
               : "Sign in"}
         </button>
       </form>
+    </section>
+  );
+}
+
+/** "Forgot password?": ask for the email, send the link, then say to check
+ * the inbox — the same message whether or not an account exists. */
+function PasswordReset({
+  email: initialEmail,
+  disabled,
+  onBack,
+}: {
+  email: string;
+  disabled: boolean;
+  onBack: (email: string) => void;
+}) {
+  const [email, setEmail] = useState(initialEmail);
+  const [busy, setBusy] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    const address = email.trim();
+    setBusy(true);
+    setError(null);
+    try {
+      await requestPasswordReset(
+        firebaseAuth(),
+        address,
+        signInUrl(window.location.origin),
+      );
+      setSentTo(address);
+    } catch (caught) {
+      setError(authErrorMessage(caught));
+    }
+    setBusy(false);
+  }
+
+  return (
+    <section className="auth-card" aria-labelledby="auth-title">
+      <h2 id="auth-title">
+        {sentTo ? "Check your email" : "Reset your password"}
+      </h2>
+      {sentTo ? (
+        <div className="auth-reset-sent" role="status">
+          <p className="auth-lede">
+            If there’s a DraftBranch account for <strong>{sentTo}</strong>,
+            we’ve sent it a link to choose a new password.
+          </p>
+          <p className="auth-lede">
+            Don’t see it in a few minutes? Check your spam folder, or{" "}
+            <button
+              type="button"
+              className="auth-inline-link"
+              onClick={() => setSentTo(null)}
+            >
+              send it again
+            </button>
+            .
+          </p>
+        </div>
+      ) : (
+        <>
+          <p className="auth-lede">
+            Enter the email you signed up with and we’ll send you a link to
+            choose a new password.
+          </p>
+          <form className="auth-form" onSubmit={onSubmit}>
+            <label>
+              Email
+              <input
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                autoFocus
+                disabled={disabled || busy}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
+            <p className="auth-error" role="alert">
+              {error}
+            </p>
+            <button
+              type="submit"
+              className="auth-submit"
+              disabled={disabled || busy}
+            >
+              {busy ? "Sending…" : "Send reset link"}
+            </button>
+          </form>
+        </>
+      )}
+      <button
+        type="button"
+        className="auth-back"
+        onClick={() => onBack(sentTo ?? email)}
+      >
+        ← Back to sign in
+      </button>
     </section>
   );
 }

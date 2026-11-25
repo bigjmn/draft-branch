@@ -283,43 +283,98 @@ test("avatars permit owner image uploads and public reads, not other writers or 
   );
 });
 
-test("only owners create and resolve anchored comments; members can read", async () => {
+test("comments follow roles: owners and commenters anywhere, editors off main only if allowed, readers never", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
-    await setDoc(
-      doc(context.firestore(), "projects/rules-project/branches/main"),
-      { name: "main" },
-    );
+    const db = context.firestore();
+    await setDoc(doc(db, "projects/rules-project/branches/main"), {
+      name: "main",
+      protected: true,
+    });
+    await setDoc(doc(db, "projects/rules-project/branches/draft"), {
+      name: "draft",
+      protected: false,
+    });
+    await setDoc(doc(db, "projects/rules-project/members/commenter"), {
+      role: "commenter",
+    });
+    await setDoc(doc(db, "projects/rules-project/members/quiet-editor"), {
+      role: "editor",
+      access: { editMain: false, commentMain: false, branch: null },
+    });
   });
-  const path = "projects/rules-project/comments/owner-note";
-  const note = {
-    authorUid: "owner",
-    authorName: "Owner",
-    branch: "main",
+  const note = (uid: string, branch = "main") => ({
+    authorUid: uid,
+    authorName: uid,
+    branch,
     blockId: "scene-1",
     quote: "INT. HOUSE - DAY",
     text: "Tighten this scene.",
     resolved: false,
     createdAt: serverTimestamp(),
-  };
-  await assertSucceeds(setDoc(doc(user("owner").firestore(), path), note));
-  await assertSucceeds(getDoc(doc(user("editor").firestore(), path)));
-  await assertFails(
-    setDoc(
-      doc(user("editor").firestore(), "projects/rules-project/comments/forged"),
-      { ...note, authorUid: "editor" },
-    ),
-  );
-  await assertFails(getDoc(doc(user("outsider").firestore(), path)));
+  });
+  const at = (uid: string, id: string) =>
+    doc(user(uid).firestore(), `projects/rules-project/comments/${id}`);
+  await assertSucceeds(setDoc(at("owner", "owner-note"), note("owner")));
+  await assertSucceeds(setDoc(at("commenter", "c-note"), note("commenter")));
+  // Editors comment on main by default (no access options recorded).
+  await assertSucceeds(setDoc(at("editor", "e-note"), note("editor")));
+  // An editor invited without main comments may still comment elsewhere.
+  await assertFails(setDoc(at("quiet-editor", "q-main"), note("quiet-editor")));
   await assertSucceeds(
-    updateDoc(doc(user("owner").firestore(), path), { resolved: true }),
+    setDoc(at("quiet-editor", "q-draft"), note("quiet-editor", "draft")),
   );
+  await assertFails(setDoc(at("reviewer", "r-note"), note("reviewer")));
+  await assertFails(setDoc(at("outsider", "o-note"), note("outsider")));
+  // Nobody posts as someone else, or on a branch that doesn't exist.
+  await assertFails(setDoc(at("editor", "forged"), note("owner")));
   await assertFails(
-    updateDoc(doc(user("editor").firestore(), path), { resolved: false }),
+    setDoc(at("editor", "nowhere"), note("editor", "no-such-branch")),
   );
+  await assertSucceeds(getDoc(at("reviewer", "owner-note")));
+  await assertFails(getDoc(at("outsider", "owner-note")));
+
+  // Authors edit and resolve their own; others can't touch them.
+  await assertSucceeds(
+    updateDoc(at("commenter", "c-note"), {
+      text: "Tighten this scene a lot.",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  // Resolving, reopening and editing again after an edit (the stored
+  // updatedAt is left alone unless the text changes).
+  await assertSucceeds(
+    updateDoc(at("commenter", "c-note"), { resolved: true }),
+  );
+  await assertSucceeds(
+    updateDoc(at("commenter", "c-note"), { resolved: false }),
+  );
+  await assertSucceeds(
+    updateDoc(at("commenter", "c-note"), {
+      text: "Tighten this scene, please.",
+      updatedAt: serverTimestamp(),
+    }),
+  );
+  await assertSucceeds(
+    updateDoc(at("commenter", "c-note"), { resolved: true }),
+  );
+  // The edit time can't be forged.
   await assertFails(
-    updateDoc(doc(user("owner").firestore(), path), { authorUid: "editor" }),
+    updateDoc(at("commenter", "c-note"), {
+      text: "Backdated.",
+      updatedAt: new Date(2000, 0, 1),
+    }),
   );
-  await assertSucceeds(deleteDoc(doc(user("owner").firestore(), path)));
+  await assertFails(updateDoc(at("editor", "c-note"), { text: "Mine now." }));
+  await assertFails(updateDoc(at("commenter", "c-note"), { text: "" }));
+  await assertFails(
+    updateDoc(at("commenter", "c-note"), { authorUid: "editor" }),
+  );
+  // The owner moderates: resolves and deletes anyone's, but can't reword them.
+  await assertSucceeds(updateDoc(at("owner", "e-note"), { resolved: true }));
+  await assertFails(updateDoc(at("owner", "e-note"), { text: "Reworded." }));
+  await assertFails(deleteDoc(at("commenter", "e-note")));
+  await assertSucceeds(deleteDoc(at("editor", "e-note")));
+  await assertSucceeds(deleteDoc(at("owner", "c-note")));
 });
 test("deleting projects reject member reads and new comments immediately", async () => {
   await env.withSecurityRulesDisabled(async (context) => {

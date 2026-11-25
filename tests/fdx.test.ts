@@ -34,7 +34,12 @@ test("FDX maps all elements, preserves order and newlines, and does not mutate t
   assert.match(content, /First line\.\nSecond line — café 🌊/);
   assert.match(content, /<Text>\(quietly\)<\/Text>/);
   assert.match(content, /<Text>TEST TEXT<\/Text>/);
-  assert.match(output, /The &quot;Light&quot; &amp; &lt;Sea&gt;/);
+  // No title page unless asked for.
+  assert.doesNotMatch(output, /<TitlePage>/);
+  assert.match(
+    toFdx(draft, { titlePage: true }),
+    /THE &quot;LIGHT&quot; &amp; &lt;SEA&gt;/,
+  );
   assert.equal(JSON.stringify(draft), before);
 });
 test("FDX escapes markup, keeps blank elements, and replaces XML-invalid characters", () => {
@@ -53,4 +58,40 @@ test("FDX escapes markup, keeps blank elements, and replaces XML-invalid charact
   );
   assert.match(output, /<Text>\(already wrapped\)<\/Text>/);
   assert.doesNotMatch(output, /\u0000|\ud800/u);
+});
+test("FDX title page: title 16 lines down, credit and author centred, contact at the bottom left", () => {
+  const draft: Draft = {
+    title: "House",
+    blocks: [{ id: "1", type: "scene", text: "INT. HOUSE - DAY" }],
+    titlePage: {
+      title: "THIS HOUSE IS THE WORST",
+      credit: "written by",
+      authors: "Jesse Nicholas",
+      contact: "J Nicks Productions\n130 Hope St.\nBrooklyn, NY 11211",
+    },
+  };
+  const page = toFdx(draft, { titlePage: true })
+    .split("<TitlePage>")[1]
+    .split("</TitlePage>")[0];
+  const rows = [
+    ...page.matchAll(
+      /Alignment="(\w+)" SpaceBefore="(\d+)"><Text[^>]*>([^<]*)</g,
+    ),
+  ].map((m) => [m[1], Number(m[2]), m[3]]);
+  assert.deepEqual(rows.slice(0, 3), [
+    ["Center", 192, "THIS HOUSE IS THE WORST"],
+    ["Center", 24, "written by"],
+    ["Center", 24, "Jesse Nicholas"],
+  ]);
+  assert.deepEqual(
+    rows.slice(3).map((r) => [r[0], r[2]]),
+    [
+      ["Left", "J Nicks Productions"],
+      ["Left", "130 Hope St."],
+      ["Left", "Brooklyn, NY 11211"],
+    ],
+  );
+  // The contact block ends half an inch above the bottom margin.
+  const used = rows.reduce((sum, r) => sum + (r[1] as number) + 12, 0);
+  assert.equal(used, 648 - 36);
 });

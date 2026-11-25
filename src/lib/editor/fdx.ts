@@ -1,4 +1,5 @@
 import { type Draft, type ElementType, wrapParenthetical } from "./types";
+import { titlePageLines, titlePageOf } from "./title-page";
 
 const elements: Record<
   ElementType,
@@ -29,7 +30,10 @@ function xml(text: string): string {
  * One editor block becomes one typed paragraph; embedded line breaks stay text.
  * Git history and application-specific identities are intentionally not exported.
  */
-export function toFdx(draft: Draft): string {
+export function toFdx(
+  draft: Draft,
+  options: { titlePage?: boolean; author?: string } = {},
+): string {
   const content = draft.blocks
     .map((block) => {
       const element = elements[block.type];
@@ -48,6 +52,19 @@ export function toFdx(draft: Draft): string {
   </ElementSettings>`,
     )
     .join("\n");
+  const titlePage = options.titlePage
+    ? `
+  <TitlePage>
+    <Content>
+${titlePageLines(titlePageOf(draft, options.author))
+  .map(
+    (line) =>
+      `      <Paragraph Type="General" Alignment="${line.align}" SpaceBefore="${line.before}"><Text Font="Courier" Size="12">${xml(line.text)}</Text></Paragraph>`,
+  )
+  .join("\n")}
+    </Content>
+  </TitlePage>`
+    : "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <FinalDraft DocumentType="Script" Template="No" Version="1">
   <Content>
@@ -56,12 +73,7 @@ ${content}
   <PageLayout TopMargin="72" BottomMargin="72" HeaderMargin="36" FooterMargin="36" BackgroundColor="#FFFFFFFFFFFF" ForegroundColor="#000000000000">
     <PageSize Width="8.50" Height="11.00"/>
   </PageLayout>
-${settings}
-  <TitlePage>
-    <Content>
-      <Paragraph Type="General" Alignment="Center" SpaceBefore="216"><Text Font="Courier" Size="12">${xml(draft.title)}</Text></Paragraph>
-    </Content>
-  </TitlePage>
+${settings}${titlePage}
 </FinalDraft>
 `;
 }

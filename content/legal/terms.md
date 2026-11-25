@@ -1,10 +1,10 @@
 # DraftBranch — Terms of Use
 
-**Effective date:** [DATE]  
-**Operator:** [FULL LEGAL NAME OF PERSON OR ENTITY], operating as J Nicks Productions  
+**Effective date:** November 23, 2026  
+**Operator:** Jesse Nicholas, operating as J Nicks Productions  
 **Website:** draftbranch.com  
-**Contact:** [CONTACT EMAIL]  
-**Mailing address:** [BUSINESS MAILING ADDRESS]
+**Contact:** jesse.a.nicholas@gmail.com 
+**Mailing address:** 130 Hope St. Brooklyn, NY 11211
 
 ## 1. About these terms
 
@@ -137,7 +137,7 @@ Where reasonably practicable, we will provide advance notice of changes that mat
 
 Deleting text from a current draft does not necessarily remove it from earlier commits, branches, exports, or backups. Version control is designed to preserve earlier revisions.
 
-You may request account or content deletion using available controls or by contacting [CONTACT EMAIL]. We will process requests in accordance with applicable law and our Privacy Policy.
+You may request account or content deletion using available controls or by contacting jesse.a.nicholas@gmail.com. We will process requests in accordance with applicable law and our Privacy Policy.
 
 Some information may be retained for a limited period where reasonably necessary for backup rotation, security, fraud prevention, legal compliance, or resolving disputes. Retained content remains subject to the restrictions in these Terms, including the prohibition on model training without explicit permission.
 
@@ -147,7 +147,7 @@ We will not retain scripts indefinitely merely because the Service uses Git or a
 
 ## 13. Copyright and other rights complaints
 
-If you believe content on the Service infringes your rights, contact [COPYRIGHT CONTACT EMAIL] with:
+If you believe content on the Service infringes your rights, contact jesse.a.nicholas@gmail.com with:
 
 - Your contact details.
 - A description of the work or right involved.
@@ -201,11 +201,11 @@ Nothing in these Terms prevents you from bringing a claim or exercising nonwaiva
 
 ## 18. Governing law and disputes
 
-These Terms are governed by the laws of [STATE/COUNTRY], except where applicable law requires otherwise.
+These Terms are governed by the laws of New York, except where applicable law requires otherwise.
 
-Subject to mandatory rights to bring claims elsewhere, disputes will be heard in the courts located in [COUNTY/STATE/COUNTRY].
+Subject to mandatory rights to bring claims elsewhere, disputes will be heard in the courts located in New York.
 
-Before commencing proceedings, we encourage you to contact [LEGAL CONTACT EMAIL] so we can attempt to resolve the issue informally. This does not prevent urgent relief or require you to miss a legal deadline.
+Before commencing proceedings, we encourage you to contact jesse.a.nicholas@gmail.com so we can attempt to resolve the issue informally. This does not prevent urgent relief or require you to miss a legal deadline.
 
 These Terms do not impose mandatory arbitration or a class-action waiver.
 
@@ -233,6 +233,6 @@ Provisions that reasonably need to continue after account closure—including ow
 
 DraftBranch  
 A platform of J Nicks Productions  
-[FULL LEGAL NAME OF OPERATOR]  
-[BUSINESS MAILING ADDRESS]  
-[CONTACT EMAIL]
+Jesse Nicholas 
+130 Hope St. Brooklyn, NY 11211 
+jesse.a.nicholas@gmail.com

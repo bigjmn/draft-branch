@@ -1,4 +1,11 @@
 "use client";
+import {
+  canBranchFrom,
+  canEditBranch,
+  editorAccess,
+  type MemberAccess,
+  type Role,
+} from "@/lib/projects/permissions";
 import { TypewriterLoader } from "@/components/ui/typewriter-loader";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -42,6 +49,8 @@ export interface VersionControlOptions {
 }
 interface Props {
   readOnly?: boolean;
+  /** A writer viewing a branch they can't edit: branch and merge, no commits. */
+  locked?: boolean;
   reader?: ReaderOptions;
   project?: EditorProject;
   draft: Draft;
@@ -71,6 +80,7 @@ export function VersionControl(props: Props) {
 
 function VersionPanel({
   readOnly = false,
+  locked = false,
   reader,
   project,
   draft,
@@ -85,7 +95,9 @@ function VersionPanel({
   const [commits, setCommits] = useState<RevisionSummary[] | null>(null);
   const [members, setMembers] = useState<SharedMember[]>([]);
   const [requests, setRequests] = useState<MergeRequest[]>([]);
-  const [view, setView] = useState<View>(readOnly ? "graph" : "working");
+  const [view, setView] = useState<View>(
+    readOnly || locked ? "graph" : "working",
+  );
   const [scope, setScope] = useState<string | null>(null);
   const [selected, setSelected] = useState<RevisionSummary | null>(null);
   const [comparison, setComparison] = useState<{
@@ -222,17 +234,26 @@ function VersionPanel({
   const openRequests = requests.filter((r) => r.status === "open");
   const activeRequest = requests.find((r) => r.id === requestId);
 
-  const ready = readOnly || (saved && !!canPublish?.());
+  // Permissions come from the membership; see lib/projects/permissions.ts.
+  const me: MemberAccess = project?.member ?? {
+    role: (project?.role ?? "reviewer") as Role,
+  };
+  const uid = project?.uid ?? "";
+  const ready = readOnly || locked || (saved && !!canPublish?.());
   const canCommit =
     !readOnly &&
+    !locked &&
     !!project &&
     ready &&
     !!base &&
     !!working?.length &&
     !stale &&
     !!current &&
-    (!current.protected || project.role === "owner") &&
+    canEditBranch(me, uid, current) &&
     !busy;
+  const branchSourceName = scope ?? project?.branch ?? DEFAULT_BRANCH;
+  const branchSource = branches.find((b) => b.name === branchSourceName);
+  const mayBranch = !!branchSource && canBranchFrom(me, uid, branchSource);
   const writer =
     !readOnly && (project?.role === "owner" || project?.role === "editor");
 
@@ -244,7 +265,7 @@ function VersionPanel({
         close();
         return;
       }
-    } else if (!ready || !canPublish?.()) return;
+    } else if (!locked && (!ready || !canPublish?.())) return;
     window.location.assign(
       `/editor?project=${encodeURIComponent(project!.id)}&branch=${encodeURIComponent(name)}`,
     );
@@ -356,9 +377,15 @@ function VersionPanel({
       !source ||
       !ready ||
       lock.current ||
-      !canPublish?.()
+      (!locked && !canPublish?.())
     )
       return;
+    if (!canBranchFrom(me, uid, source)) {
+      setError(
+        `You can create branches only from your dedicated branch or branches you made, not from ${from}.`,
+      );
+      return;
+    }
     lock.current = true;
     setBusy(true);
     setError("");
@@ -426,9 +453,13 @@ function VersionPanel({
               <small>checked out</small>
             </span>
             <button
-              disabled={readOnly || !ready || busy}
+              disabled={readOnly || !ready || busy || !mayBranch}
               title={
-                readOnly ? "Read-only access cannot create branches" : undefined
+                readOnly
+                  ? "Read-only access cannot create branches"
+                  : !mayBranch
+                    ? `You can branch only from your dedicated branch or branches you made`
+                    : undefined
               }
               onClick={() => setCreating(!creating)}
             >
@@ -457,9 +488,11 @@ function VersionPanel({
             <span className="vc-sync">
               {readOnly
                 ? "Read-only access"
-                : saved
-                  ? (options?.savedLabel ?? "Cloud draft saved")
-                  : (options?.savingLabel ?? "Waiting for cloud save…")}
+                : locked
+                  ? "View only on this branch"
+                  : saved
+                    ? (options?.savedLabel ?? "Cloud draft saved")
+                    : (options?.savingLabel ?? "Waiting for cloud save…")}
             </span>
           </div>
           {creating && !readOnly && (
@@ -509,7 +542,7 @@ function VersionPanel({
           <div className="vc-body">
             <nav className="vc-sidebar" aria-label="Version navigation">
               <div className="eyebrow">WORKSPACE</div>
-              {!readOnly && (
+              {!readOnly && !locked && (
                 <button
                   aria-pressed={view === "working" || view === "update"}
                   onClick={() => {
@@ -603,7 +636,11 @@ function VersionPanel({
                   ? "Browse every committed branch, revision and merge request. Changes require Editor access."
                   : project.role === "owner"
                     ? "You own this project: merges into main are yours to approve."
-                    : "Editors merge into their own branches and open merge requests for main. The owner approves them."}
+                    : editorAccess(me).branch
+                      ? `You write on ${editorAccess(me).branch} and branches you make from it. Open a merge request to bring your work into main.`
+                      : editorAccess(me).editMain
+                        ? "You can commit to main and approve merges into it."
+                        : "Editors merge into their own branches and open merge requests for main. The owner approves them."}
               </p>
             </nav>
             <section
@@ -640,10 +677,10 @@ function VersionPanel({
                       </button>
                     </div>
                   )}
-                  {current?.protected && project.role !== "owner" && (
+                  {current && !canEditBranch(me, uid, current) && (
                     <p className="vc-warning">
-                      Only the owner can commit to this protected branch. Create
-                      a branch, commit there, then open a merge request.
+                      You can’t commit to {current.name}. Create a branch,
+                      commit there, then open a merge request.
                     </p>
                   )}
                   <ChangeList before={base} after={draft} />
@@ -749,7 +786,9 @@ function VersionPanel({
                       selected={selected?.oid ?? null}
                       onSelect={setSelected}
                       working={
-                        readOnly || (scope !== null && scope !== project.branch)
+                        readOnly ||
+                        locked ||
+                        (scope !== null && scope !== project.branch)
                           ? null
                           : (working?.length ?? 0)
                       }

@@ -152,3 +152,67 @@ test("merging everything away still leaves one element", () => {
   const result = mergeDrafts(empty, d([]), d([]));
   assert.equal(result.draft.blocks.length, 1);
 });
+
+test("title pages merge field by field, conflict per field, and resolve like the title", () => {
+  const page = {
+    title: "PILOT",
+    credit: "written by",
+    authors: "Ella",
+    contact: "Company",
+  };
+  const withPage = (titlePage: typeof page | undefined): MergeDraft => ({
+    ...base,
+    ...(titlePage ? { titlePage } : {}),
+  });
+  // Different fields edited on each side: both kept.
+  const clean = mergeDrafts(
+    withPage(page),
+    withPage({ ...page, authors: "Ella & Ben" }),
+    withPage({ ...page, contact: "Studio" }),
+  );
+  assert.deepEqual(clean.conflicts, []);
+  assert.deepEqual(clean.draft.titlePage, {
+    ...page,
+    authors: "Ella & Ben",
+    contact: "Studio",
+  });
+  // The same field edited differently: one conflict for that field.
+  const both = [
+    withPage(page),
+    withPage({ ...page, title: "PILOT (TARGET)" }),
+    withPage({ ...page, title: "PILOT (SOURCE)" }),
+  ] as const;
+  const conflicted = mergeDrafts(...both);
+  assert.deepEqual(conflicted.unresolved, ["titlepage:title"]);
+  assert.equal(conflicted.conflicts[0].kind, "titlepage");
+  assert.equal(conflicted.draft.titlePage?.title, "PILOT (TARGET)");
+  assert.equal(
+    mergeDrafts(...both, { "titlepage:title": "source" }).draft.titlePage
+      ?.title,
+    "PILOT (SOURCE)",
+  );
+  assert.equal(
+    mergeDrafts(...both, { "titlepage:title": { text: "PILOT" } }).draft
+      .titlePage?.title,
+    "PILOT",
+  );
+  // Custom text over the field's limit isn't accepted.
+  assert.deepEqual(
+    mergeDrafts(...both, { "titlepage:title": { text: "x".repeat(501) } })
+      .unresolved,
+    ["titlepage:title"],
+  );
+  // A draft from before title pages takes the other side's page.
+  assert.deepEqual(
+    mergeDrafts(withPage(undefined), withPage(undefined), withPage(page)).draft
+      .titlePage,
+    page,
+  );
+  assert.deepEqual(
+    mergeDrafts(withPage(undefined), withPage(page), withPage(undefined)).draft
+      .titlePage,
+    page,
+  );
+  // Neither side has one: none is added.
+  assert.equal("titlePage" in mergeDrafts(base, base, base).draft, false);
+});

@@ -18,6 +18,7 @@
 @import "./loader.css";
 
 @import "./screenplay-diff.css";
+@import "./title-page.css";
 
 .fdx-import { margin-block: 1rem; }
 .fdx-import label { display: grid; gap: .6rem; }

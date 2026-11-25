@@ -1,6 +1,14 @@
 import { sameScreenplayElement } from "./element-equality";
 import { wordDiff, type TextSegment } from "./word-diff";
 import type { Draft, ScriptBlock } from "@/lib/editor/types";
+import { TITLE_PAGE_FIELDS } from "./merge";
+
+const TITLE_PAGE_LABELS = {
+  title: "Title page · Title",
+  credit: "Title page · Credit",
+  authors: "Title page · Author",
+  contact: "Title page · Contact",
+} as const;
 export interface DiffRow {
   /** "changed": the same element with edited text, shown once with the
    * edits marked inline (block is the new version, oldBlock the old). */
@@ -8,7 +16,10 @@ export interface DiffRow {
   block: ScriptBlock;
   oldNumber?: number;
   newNumber?: number;
+  /** Not a script element: the title, or a title page field. */
   title?: boolean;
+  /** What a title row is, e.g. "Title" or "Title page · Author". */
+  label?: string;
   /** Original text when a context row differs only in display-equivalent
    * casing, and the old version of a changed row. */
   oldBlock?: ScriptBlock;
@@ -46,6 +57,40 @@ export function screenplayDiff(before: Draft, after: Draft): DiffRow[] {
       title: true,
       block: { id: "title", type: "action", text: before.title },
     });
+  }
+  // Title page fields come before the script, edited ones word by word.
+  for (const field of TITLE_PAGE_FIELDS) {
+    const from = before.titlePage?.[field] ?? "",
+      to = after.titlePage?.[field] ?? "";
+    if (from === to) continue;
+    const block = (text: string): ScriptBlock => ({
+      id: `titlepage:${field}`,
+      type: "action",
+      text,
+    });
+    const label = TITLE_PAGE_LABELS[field];
+    if (from && to) {
+      const segments = wordDiff(from, to);
+      if (segments)
+        rows.push({
+          kind: "changed",
+          title: true,
+          label,
+          block: block(to),
+          oldBlock: block(from),
+          segments,
+        });
+      else {
+        rows.push({ kind: "removed", title: true, label, block: block(from) });
+        rows.push({ kind: "added", title: true, label, block: block(to) });
+      }
+    } else
+      rows.push({
+        kind: from ? "removed" : "added",
+        title: true,
+        label,
+        block: block(from || to),
+      });
   }
   const old = new Map(before.blocks.map((b, i) => [b.id, i]));
   const shared = after.blocks.flatMap((b, j) =>

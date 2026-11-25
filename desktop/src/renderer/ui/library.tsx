@@ -51,6 +51,7 @@ const RESYNC_AFTER_MS = 2 * 60 * 1000;
 const ROLE_LABEL = {
   owner: "Owner",
   editor: "Editor",
+  commenter: "Commenter",
   reviewer: "Reader",
 } as const;
 const messageOf = (error: unknown, fallback: string) =>

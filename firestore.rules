@@ -28,6 +28,7 @@ service cloud.firestore {
     match /invitationMail/{id} { allow read, write: if false; }
     match /invitationLimits/{id} { allow read, write: if false; }
     match /emulatorMail/{id} { allow read, write: if false; }
+    match /contactLimits/{id} { allow read, write: if false; }
     // All mutations go through authenticated callable APIs / trusted workers.
     match /users/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
@@ -40,21 +41,52 @@ service cloud.firestore {
     match /projects/{projectId} {
       allow read: if member(projectId);
       allow write: if false;
+      // Comments: owners and commenters comment anywhere; editors anywhere
+      // except main unless their invitation allowed it (access.commentMain);
+      // readers can't. Authors edit, resolve and delete their own; the owner
+      // resolves and deletes anyone's. Mirrors functions/src/projects/permissions.ts.
       match /comments/{commentId} {
+        function myRole() {
+          return get(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid)).data;
+        }
+        function canComment(branch) {
+          let me = myRole();
+          let target = get(/databases/$(database)/documents/projects/$(projectId)/branches/$(branch)).data;
+          return member(projectId)
+            && exists(/databases/$(database)/documents/projects/$(projectId)/branches/$(branch))
+            && (me.role in ['owner', 'commenter']
+              || (me.role == 'editor'
+                && (target.protected != true || me.get('access', {}).get('commentMain', true) != false)));
+        }
+        function validText(text) { return text is string && text.size() > 0 && text.size() <= 2000; }
         allow read: if member(projectId);
-        allow create: if owner(projectId)
+        allow create: if canComment(request.resource.data.branch)
           && request.resource.data.keys().hasAll(['authorUid','authorName','branch','blockId','quote','text','resolved','createdAt'])
           && request.resource.data.keys().hasOnly(['authorUid','authorName','branch','blockId','quote','text','resolved','createdAt'])
           && request.resource.data.authorUid == request.auth.uid
           && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 100
           && request.resource.data.branch is string && request.resource.data.branch.size() <= 64
-          && exists(/databases/$(database)/documents/projects/$(projectId)/branches/$(request.resource.data.branch))
           && request.resource.data.blockId is string && request.resource.data.blockId.size() > 0 && request.resource.data.blockId.size() <= 128
           && request.resource.data.quote is string && request.resource.data.quote.size() <= 500
-          && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+          && validText(request.resource.data.text)
           && request.resource.data.resolved == false && request.resource.data.createdAt == request.time;
-        allow update: if owner(projectId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resolved']) && request.resource.data.resolved is bool;
-        allow delete: if owner(projectId);
+        // An edit stamps updatedAt with the server time. Resolving sends only
+        // `resolved` and leaves an earlier stamp as it is.
+        allow update: if (
+            resource.data.authorUid == request.auth.uid
+            && canComment(resource.data.branch)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'resolved', 'updatedAt'])
+            && validText(request.resource.data.text)
+            && request.resource.data.resolved is bool
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['updatedAt'])
+              || request.resource.data.updatedAt == request.time)
+          ) || (
+            owner(projectId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resolved'])
+            && request.resource.data.resolved is bool
+          );
+        allow delete: if owner(projectId)
+          || (member(projectId) && resource.data.authorUid == request.auth.uid);
       }
       match /members/{uid} { allow read: if member(projectId); allow write: if false; }
       match /branches/{branchId} { allow read: if member(projectId); allow write: if false; }

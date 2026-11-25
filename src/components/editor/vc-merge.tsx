@@ -19,9 +19,30 @@ import {
   type Resolution,
 } from "@/lib/projects/merge";
 import { draftChanges } from "@/lib/projects/changes";
+import {
+  TITLE_PAGE_LABELS as FIELD_LABELS,
+  TITLE_PAGE_LIMITS,
+  type TitlePageField,
+} from "@/lib/editor/title-page";
+
+const TITLE_PAGE_LABELS = Object.fromEntries(
+  Object.entries(FIELD_LABELS).map(([field, label]) => [
+    field,
+    `Title page · ${label}`,
+  ]),
+) as Record<TitlePageField, string>;
 import type { Draft } from "@/lib/editor/types";
 import { ChangeList, elementLabel, sceneIndex } from "./vc-changes";
 import type { EditorProject } from "./use-project-draft";
+import {
+  canCommentOn,
+  canMergeInto,
+  canModerateComments,
+  type MemberAccess,
+  type Role,
+} from "@/lib/projects/permissions";
+import { commenterName, useBranchComments } from "@/lib/projects/comments";
+import { useAuth } from "@/components/auth/auth-provider";
 
 interface Labels {
   target: string;
@@ -124,9 +145,31 @@ export function MergeWorkspace({
     [preview, result],
   );
   const role = project.role;
+  const me: MemberAccess = project.member ?? { role: role as Role };
   const writer = !readOnly && (role === "owner" || role === "editor");
   const canMerge =
-    writer && !!targetBranch && (!targetBranch.protected || role === "owner");
+    writer && !!targetBranch && canMergeInto(me, project.uid, targetBranch);
+  // Review notes live on the branch being merged, on the same lines the
+  // editor shows them, so the author sees them where they write.
+  const { user } = useAuth();
+  const sourceNotes = useBranchComments(
+    project.member && user && !user.isAnonymous ? project.id : undefined,
+    source,
+  );
+  const notes =
+    project.member && user && !user.isAnonymous && sourceBranch
+      ? {
+          projectId: project.id,
+          branch: source,
+          comments: sourceNotes.comments,
+          permissions: {
+            uid: user.uid,
+            authorName: commenterName(user),
+            canComment: canCommentOn(me, sourceBranch),
+            canModerate: canModerateComments(me),
+          },
+        }
+      : undefined;
   const openRequest =
     request?.status === "open"
       ? request
@@ -139,7 +182,7 @@ export function MergeWorkspace({
   const reverseAllowed =
     writer &&
     !!sourceBranch &&
-    (!sourceBranch.protected || role === "owner") &&
+    canMergeInto(me, project.uid, sourceBranch) &&
     !canMerge;
   const labels = { target, source };
   const unresolved = result?.unresolved.length ?? 0;
@@ -343,7 +386,17 @@ export function MergeWorkspace({
             <div className="vc-section-title vc-spaced">
               <h3>Result on {target}</h3>
             </div>
-            <ChangeList before={preview.target} after={result.draft as Draft} />
+            {notes && (
+              <p className="vc-description">
+                Hover a line and click the chat icon to leave review comments.
+                They stay on {source}, beside the same lines in the editor.
+              </p>
+            )}
+            <ChangeList
+              before={preview.target}
+              after={result.draft as Draft}
+              notes={notes}
+            />
             {canMerge ? (
               <form
                 className="vc-commit-form"
@@ -364,7 +417,9 @@ export function MergeWorkspace({
                 <div>
                   <span>
                     {targetBranch?.protected
-                      ? `As owner, merging approves these changes for ${target}.`
+                      ? role === "owner"
+                        ? `As owner, merging approves these changes for ${target}.`
+                        : `Merging approves these changes for ${target}.`
                       : `Creates a merge revision on ${target}.`}
                   </span>
                   <span className="vc-actions">
@@ -394,9 +449,7 @@ export function MergeWorkspace({
             ) : request ? (
               <div className="vc-commit-form">
                 <div>
-                  <span>
-                    Waiting for the project owner to approve this merge.
-                  </span>
+                  <span>Waiting for the owner to approve this merge.</span>
                   {writer && request.authorUid === project.uid && (
                     <button
                       className="vc-link"
@@ -452,7 +505,8 @@ export function MergeWorkspace({
                 />
                 <div>
                   <span>
-                    {target} is protected. The owner reviews and merges.
+                    You can’t merge into {target} yourself. The owner reviews
+                    and merges.
                   </span>
                   <button
                     className="primary-action"
@@ -651,6 +705,7 @@ export function UpdateWorkspace({
 
 const CONFLICT_TITLES: Record<MergeConflict["kind"], string> = {
   title: "Both changed the title",
+  titlepage: "Both changed the title page",
   content: "Both edited this element",
   delete: "Deleted on one side, edited on the other",
   order: "Both added or rearranged material here",
@@ -716,6 +771,8 @@ export function ConflictList({
 }
 function locate(conflict: MergeConflict, scenes: Map<string, string>) {
   if (conflict.kind === "title") return null;
+  if (conflict.kind === "titlepage")
+    return TITLE_PAGE_LABELS[conflict.id.slice(10) as TitlePageField] ?? null;
   const anchor = conflict.id.slice(conflict.id.indexOf(":") + 1);
   if (anchor === "start") return "Opening of the screenplay";
   return scenes.get(anchor) ?? null;
@@ -764,9 +821,14 @@ function ConflictCard({
       {body}
     </div>
   );
+  // Title page fields show as plain text lines.
   const asDraft = (blocks: MergeBlock[]): Draft => ({
     title: blocks.find((b) => b.type === "title")?.text ?? "",
-    blocks: blocks.filter((b) => b.type !== "title") as Draft["blocks"],
+    blocks: blocks
+      .filter((b) => b.type !== "title")
+      .map((b) =>
+        b.type === "titlepage" ? { ...b, type: "action" } : b,
+      ) as Draft["blocks"],
   });
   const blockText = (block: MergeBlock | null | undefined) => (
     <ChangeList
@@ -857,7 +919,16 @@ function ConflictCard({
               />
             ) : (
               <textarea
-                aria-label="Custom element text"
+                aria-label={
+                  conflict.kind === "titlepage"
+                    ? "Custom title page text"
+                    : "Custom element text"
+                }
+                maxLength={
+                  conflict.kind === "titlepage"
+                    ? TITLE_PAGE_LIMITS[conflict.id.slice(10) as TitlePageField]
+                    : undefined
+                }
                 value={draftText}
                 disabled={disabled}
                 onChange={(e) => {

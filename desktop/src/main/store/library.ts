@@ -191,7 +191,7 @@ export class Library {
     title: unknown;
     role: Role;
   }): Promise<ProjectMeta> {
-    if (!["owner", "editor", "reviewer"].includes(input.role))
+    if (!["owner", "editor", "commenter", "reviewer"].includes(input.role))
       throw new StoreError("invalid", "Invalid role.");
     const ref = { scope: input.uid, id: input.projectId };
     if (input.uid === LOCAL_SCOPE)

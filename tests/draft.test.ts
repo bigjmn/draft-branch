@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseDraft, toFountain, wordCount } from "../src/lib/editor/draft";
 import { createBlankDraft, createSampleDraft } from "../src/lib/editor/sample";
+import { defaultTitlePage } from "../src/lib/editor/title-page";
 import {
   NEXT_ELEMENT,
   cycleElement,
@@ -47,6 +48,49 @@ test("Fountain preserves character/dialogue adjacency, parentheticals, and force
   assert.match(output, /\.EXT\. OCEAN - DUSK/);
   assert.match(output, /@ELLA\n\(quietly\)\nA first line\.\nA second line\./);
   assert.match(output, /> CUT TO:/);
+  // No title page unless asked for.
+  assert.ok(output.startsWith(".EXT. OCEAN"));
+});
+test("Fountain title page uses key/value pairs with indented continuation lines", () => {
+  const draft = {
+    title: "A script",
+    blocks: [{ id: "1", type: "scene" as const, text: "int. house - day" }],
+    titlePage: {
+      title: "THIS HOUSE IS THE WORST",
+      credit: "written by",
+      authors: "Jesse Nicholas",
+      contact: "J Nicks Productions\n130 Hope St.",
+    },
+  };
+  assert.equal(
+    toFountain(draft, { titlePage: true }),
+    "Title: THIS HOUSE IS THE WORST\nCredit: written by\nAuthor: Jesse Nicholas\nContact:\n   J Nicks Productions\n   130 Hope St.\n\n.INT. HOUSE - DAY\n",
+  );
+  // A draft from before title pages gets the default one.
+  const { titlePage: _, ...old } = draft;
+  assert.match(
+    toFountain(old, { titlePage: true, author: "Ella" }),
+    /^Title: A SCRIPT\nCredit: written by\nAuthor: Ella\nContact:\n   Company\n   Address\n   Phone\n   Email\n\n/,
+  );
+});
+test("title pages survive saving and loading; invalid ones are dropped", () => {
+  const draft = {
+    ...createSampleDraft(),
+    titlePage: { title: "T", credit: "by", authors: "A", contact: "C" },
+  };
+  assert.deepEqual(parseDraft(JSON.stringify(draft)), draft);
+  const bad = parseDraft(JSON.stringify({ ...draft, titlePage: { title: 3 } }));
+  assert.equal(bad.titlePage, undefined);
+});
+test("the default title page uses the project title, or Untitled", () => {
+  assert.deepEqual(defaultTitlePage("This house is the worst", "Jesse"), {
+    title: "THIS HOUSE IS THE WORST",
+    credit: "written by",
+    authors: "Jesse",
+    contact: "Company\nAddress\nPhone\nEmail",
+  });
+  assert.equal(defaultTitlePage("Untitled screenplay", "").title, "UNTITLED");
+  assert.equal(defaultTitlePage("  ", "").title, "UNTITLED");
 });
 test("word count handles blank blocks and multiline dialogue", () => {
   assert.equal(

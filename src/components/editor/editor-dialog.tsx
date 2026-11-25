@@ -1,12 +1,12 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ExportFormat } from "@/lib/editor/draft";
 export type DialogKind = "export" | "help" | null;
 interface Props {
   kind: DialogKind;
   onClose: () => void;
-  onExport: (format: ExportFormat) => void;
-  onPrint: () => void;
+  onExport: (format: ExportFormat, includeTitlePage: boolean) => void;
+  onPrint: (includeTitlePage: boolean) => void;
   /** Where drafts are kept, when it is not this browser (the desktop app). */
   storageNote?: string;
 }
@@ -18,9 +18,12 @@ export function EditorDialog({
   storageNote,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
+  // Off every time the dialog opens.
+  const [titlePage, setTitlePage] = useState(false);
   useEffect(() => {
     if (kind) ref.current?.showModal();
     else ref.current?.close();
+    setTitlePage(false);
   }, [kind]);
   return (
     <dialog
@@ -40,28 +43,44 @@ export function EditorDialog({
           <div className="eyebrow">TAKE YOUR STORY WITH YOU</div>
           <h2 id="dialog-title">Export screenplay</h2>
           <p>Create a copy of your current working draft.</p>
-          <button className="export-option" onClick={onPrint}>
+          <label className="export-title-page">
+            <input
+              type="checkbox"
+              checked={titlePage}
+              onChange={(event) => setTitlePage(event.target.checked)}
+            />
+            Include title page
+          </label>
+          <button className="export-option" onClick={() => onPrint(titlePage)}>
             Print / Save as PDF ↗
             <small>
               Formatted US Letter pages. Select 100% scale and turn off browser
               headers.
             </small>
           </button>
-          <button className="export-option" onClick={() => onExport("fdx")}>
+          <button
+            className="export-option"
+            onClick={() => onExport("fdx", titlePage)}
+          >
             Final Draft (.fdx) ↓
-            <small>
-              Editable screenplay with element types and a title page.
-            </small>
+            <small>Editable screenplay with element types.</small>
           </button>
           <button
             className="export-option"
-            onClick={() => onExport("fountain")}
+            onClick={() => onExport("fountain", titlePage)}
           >
             Fountain file ↓
             <small>Plain-text screenplay for other writing apps.</small>
           </button>
-          <button className="export-option" onClick={() => onExport("json")}>
-            Draft backup ↓<small>JSON with scene and element identities.</small>
+          <button
+            className="export-option"
+            onClick={() => onExport("json", titlePage)}
+          >
+            Draft backup ↓
+            <small>
+              JSON with scene and element identities. Always includes the title
+              page.
+            </small>
           </button>
         </>
       ) : (
